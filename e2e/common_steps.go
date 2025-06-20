@@ -14,10 +14,19 @@ import (
 
 	"log"
 
+	"crypto/x509"
+	"encoding/pem"
+
 	"github.com/cert-manager/aws-privateca-issuer/pkg/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+type CertificateRequest struct {
+	Ctx      context.Context
+	CertType string
+	Usage    []cmv1.KeyUsage // optional, will be nil if not provided
+}
 
 func getCaArn(caType string) string {
 	caArn, exists := testContext.caArns[caType]
@@ -94,12 +103,11 @@ func (issCtx *IssuerContext) createSecret(ctx context.Context, accessKey string,
 	return nil
 }
 
-func getBaseCertSpec(certType string, usages ...cmv1.KeyUsage) cmv1.CertificateSpec {
-	sanitizedCertType := strings.Replace(strings.ToLower(certType), "_", "-", -1)
+func getBaseCertSpec(certReq CertificateRequest) cmv1.CertificateSpec {
+	sanitizedCertType := strings.Replace(strings.ToLower(certReq.CertType), "_", "-", -1)
 
-	log.Printf("Creating Certificate Spec for %s", usages)
-	if len(usages) == 0 {
-		usages = []cmv1.KeyUsage{cmv1.UsageAny}
+	if len(certReq.Usage) == 0 {
+		certReq.Usage = []cmv1.KeyUsage{cmv1.UsageAny}
 	}
 
 	certSpec := cmv1.CertificateSpec{
@@ -110,17 +118,17 @@ func getBaseCertSpec(certType string, usages ...cmv1.KeyUsage) cmv1.CertificateS
 		Duration: &metav1.Duration{
 			Duration: 721 * time.Hour,
 		},
-		Usages: usages,
+		Usages: certReq.Usage,
 	}
 
-	if certType == "RSA" {
+	if certReq.CertType == "RSA" {
 		certSpec.PrivateKey = &cmv1.CertificatePrivateKey{
 			Algorithm: cmv1.RSAKeyAlgorithm,
 			Size:      2048,
 		}
 	}
 
-	if certType == "ECDSA" {
+	if certReq.CertType == "ECDSA" {
 		certSpec.PrivateKey = &cmv1.CertificatePrivateKey{
 			Algorithm: cmv1.ECDSAKeyAlgorithm,
 			Size:      256,
@@ -130,18 +138,18 @@ func getBaseCertSpec(certType string, usages ...cmv1.KeyUsage) cmv1.CertificateS
 	return certSpec
 }
 
-func getCertSpec(certType string, usages ...cmv1.KeyUsage) cmv1.CertificateSpec {
-	switch certType {
+func getCertSpec(certReq CertificateRequest) cmv1.CertificateSpec {
+	switch certReq.CertType {
 	case "RSA":
-		return getBaseCertSpec(certType, usages...)
+		return getBaseCertSpec(certReq)
 	case "ECDSA":
-		return getBaseCertSpec(certType, usages...)
+		return getBaseCertSpec(certReq)
 	case "SHORT_VALIDITY":
-		return getCertSpecWithValidity(getBaseCertSpec("RSA"), 20, 5, usages...)
+		return getCertSpecWithValidity(getBaseCertSpec(certReq), 20, 5, certReq.Usage...)
 	case "CA":
-		return getCaCertSpec(getBaseCertSpec("RSA"))
+		return getCaCertSpec(getBaseCertSpec(certReq))
 	default:
-		panic(fmt.Sprintf("Unknown Certificate Type: %s", certType))
+		panic(fmt.Sprintf("Unknown Certificate Type: %s", certReq.CertType))
 	}
 }
 
@@ -152,10 +160,8 @@ func getCertSpecWithValidity(certSpec cmv1.CertificateSpec, duration time.Durati
 	certSpec.RenewBefore = &metav1.Duration{
 		Duration: renewBefore * time.Hour,
 	}
-	// TODO: Check what happens if we input a usages with len 0, I think i check this elsewhere
-	if len(usages) > 0 {
-		certSpec.Usages = usages
-	}
+
+	certSpec.Usages = usages
 
 	return certSpec
 }
@@ -165,15 +171,29 @@ func getCaCertSpec(certSpec cmv1.CertificateSpec) cmv1.CertificateSpec {
 	return getCertSpecWithValidity(certSpec, 20, 5)
 }
 
-func (issCtx *IssuerContext) issueCertificate(ctx context.Context, certType string) error {
-	log.Printf("=== issueCertificate CALLED === certType: %s (NO USAGE SPECIFIED)", certType)
-	return issCtx.issueCertificateInternal(ctx, certType)
+func (issCtx *IssuerContext) issueCertificateWithoutUsage(ctx context.Context, certType string) error {
+	certReq := CertificateRequest{
+		Ctx:      ctx,
+		CertType: certType,
+		Usage:    nil,
+	}
+	return issCtx.issueCertificate(certReq)
 }
 
-func (issCtx *IssuerContext) issueCertificateInternal(ctx context.Context, certType string, usages ...cmv1.KeyUsage) error {
-	sanitizedCertType := strings.Replace(strings.ToLower(certType), "_", "-", -1)
+func (issCtx *IssuerContext) issueCertificateWithUsage(ctx context.Context, certType string, usageStr string) error {
+	usages := parseUsages(usageStr)
+	certReq := CertificateRequest{
+		Ctx:      ctx,
+		CertType: certType,
+		Usage:    usages,
+	}
+	return issCtx.issueCertificate(certReq)
+}
+
+func (issCtx *IssuerContext) issueCertificate(certReq CertificateRequest) error {
+	sanitizedCertType := strings.Replace(strings.ToLower(certReq.CertType), "_", "-", -1)
 	issCtx.certName = issCtx.issuerName + "-" + sanitizedCertType + "-cert"
-	certSpec := getCertSpec(certType, usages...)
+	certSpec := getCertSpec(certReq)
 
 	secretName := issCtx.certName + "-cert-secret"
 	certSpec.SecretName = secretName
@@ -188,40 +208,33 @@ func (issCtx *IssuerContext) issueCertificateInternal(ctx context.Context, certT
 		Spec:       certSpec,
 	}
 
-	_, err := testContext.cmClient.Certificates(issCtx.namespace).Create(ctx, &certificate, metav1.CreateOptions{})
+	_, err := testContext.cmClient.Certificates(issCtx.namespace).Create(certReq.Ctx, &certificate, metav1.CreateOptions{})
 
 	if err != nil {
-		assert.FailNow(godog.T(ctx), "Could not create certificate: "+err.Error())
+		assert.FailNow(godog.T(certReq.Ctx), "Could not create certificate: "+err.Error())
 	}
 
 	return nil
 }
 
-func (issCtx *IssuerContext) issueCertificateWithUsage(ctx context.Context, certType string, usageStr string) error {
-	log.Printf("RECEIVED: %s", usageStr)
-	usages := parseUsages(usageStr)
-	log.Printf("Issuing certificate with usages: %v", usages)
-	return issCtx.issueCertificateInternal(ctx, certType, usages...)
-}
-
 func parseUsages(usageStr string) []cmv1.KeyUsage {
 	usageMap := map[string]cmv1.KeyUsage{
-		"client_auth":       cmv1.UsageClientAuth,
-		"server_auth":       cmv1.UsageServerAuth,
-		"code_signing":      cmv1.UsageCodeSigning,
-		"ocsp_signing":      cmv1.UsageOCSPSigning,
-		"any":               cmv1.UsageAny,
+		"client_auth":  cmv1.UsageClientAuth,
+		"server_auth":  cmv1.UsageServerAuth,
+		"code_signing": cmv1.UsageCodeSigning,
+		"ocsp_signing": cmv1.UsageOCSPSigning,
+		"any":          cmv1.UsageAny,
 	}
 
-	parts := strings.Split(strings.ReplaceAll(usageStr, " ", ""), ",")
+	parts := strings.Split(usageStr, ",")
 	var usages []cmv1.KeyUsage
 	for _, part := range parts {
 		if usage, exists := usageMap[strings.ToLower(part)]; exists {
 			usages = append(usages, usage)
+		} else {
+			assert.FailNow(godog.T(context.Background()), "Unknown usage: "+part)
 		}
 	}
-
-	log.Printf("Parsed usages: %v", usages)
 
 	return usages
 }
@@ -254,7 +267,6 @@ func (issCtx *IssuerContext) verifyCertificateRequestState(ctx context.Context, 
 
 func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage string) error {
 	// The secret name is typically the same as the certificate name + "-cert-secret"
-	// or whatever was specified in the Certificate's spec.secretName
 	secretName := issCtx.certName + "-cert-secret"
 
 	certData, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
@@ -262,15 +274,48 @@ func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage
 		assert.FailNow(godog.T(ctx), "Failed to get certificate data: "+err.Error())
 	}
 
-	// Now you can perform additional validation on the certificate text
-	// For example, check if it contains expected fields, is properly signed, etc.
 	if len(certData) == 0 {
 		assert.FailNow(godog.T(ctx), "Certificate data is empty")
 	}
 
 	log.Printf("Expected usage: %s", usage)
-	log.Printf("Certificate Data: %s", certData)
-	// You could add more specific validation here
+
+	decodedData, _ := pem.Decode([]byte(certData))
+	if decodedData == nil {
+		assert.FailNow(godog.T(ctx), "Failed to decode certificate data")
+	}
+
+	cert, err := x509.ParseCertificate(decodedData.Bytes)
+	if err != nil {
+		assert.FailNow(godog.T(ctx), "Failed to parse certificate: "+err.Error())
+	}
+
+	usageLabels := map[x509.ExtKeyUsage]string{
+		x509.ExtKeyUsageClientAuth:  "client_auth",
+		x509.ExtKeyUsageServerAuth:  "server_auth",
+		x509.ExtKeyUsageCodeSigning: "code_signing",
+		x509.ExtKeyUsageOCSPSigning: "ocsp_signing",
+		x509.ExtKeyUsageAny:         "any",
+	}
+
+	expectedUsages := strings.Split(usage, ",")
+
+	// Check if all expected usages are present in the certificate
+	for _, expectedUsage := range expectedUsages {
+		found := false
+		for _, extUsage := range cert.ExtKeyUsage {
+			if label, exists := usageLabels[extUsage]; exists {
+				if label == expectedUsage {
+					log.Printf("Found expected usage type in certificate: %s\n", label)
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			assert.FailNow(godog.T(ctx), "Certificate did not have expected usage: "+expectedUsage)
+		}
+	}
 
 	return nil
 }
