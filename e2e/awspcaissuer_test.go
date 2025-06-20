@@ -52,7 +52,7 @@ func TestMain(m *testing.M) {
 	_, xaRoleExists := os.LookupEnv("PLUGIN_CROSS_ACCOUNT_ROLE")
 	if !xaRoleExists {
 		log.Printf("Skipping CrossAccount tests")
-		o.Tags = "~@CrossAccount"
+		o.Tags = "@KeyUsage"
 	}
 	status := godog.TestSuite{
 		Name:                 "AWSPrivateCAIssuer",
