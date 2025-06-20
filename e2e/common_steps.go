@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
+	"log"
+
 	"github.com/cert-manager/aws-privateca-issuer/pkg/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,6 +97,7 @@ func (issCtx *IssuerContext) createSecret(ctx context.Context, accessKey string,
 func getBaseCertSpec(certType string, usages ...cmv1.KeyUsage) cmv1.CertificateSpec {
 	sanitizedCertType := strings.Replace(strings.ToLower(certType), "_", "-", -1)
 
+	log.Printf("Creating Certificate Spec for %s", usages)
 	if len(usages) == 0 {
 		usages = []cmv1.KeyUsage{cmv1.UsageAny}
 	}
@@ -149,6 +152,10 @@ func getCertSpecWithValidity(certSpec cmv1.CertificateSpec, duration time.Durati
 	certSpec.RenewBefore = &metav1.Duration{
 		Duration: renewBefore * time.Hour,
 	}
+	// TODO: Check what happens if we input a usages with len 0, I think i check this elsewhere
+	if len(usages) > 0 {
+		certSpec.Usages = usages
+	}
 
 	return certSpec
 }
@@ -159,6 +166,7 @@ func getCaCertSpec(certSpec cmv1.CertificateSpec) cmv1.CertificateSpec {
 }
 
 func (issCtx *IssuerContext) issueCertificate(ctx context.Context, certType string) error {
+	log.Printf("=== issueCertificate CALLED === certType: %s (NO USAGE SPECIFIED)", certType)
 	return issCtx.issueCertificateInternal(ctx, certType)
 }
 
@@ -190,7 +198,9 @@ func (issCtx *IssuerContext) issueCertificateInternal(ctx context.Context, certT
 }
 
 func (issCtx *IssuerContext) issueCertificateWithUsage(ctx context.Context, certType string, usageStr string) error {
+	log.Printf("RECEIVED: %s", usageStr)
 	usages := parseUsages(usageStr)
+	log.Printf("Issuing certificate with usages: %v", usages)
 	return issCtx.issueCertificateInternal(ctx, certType, usages...)
 }
 
@@ -198,9 +208,9 @@ func parseUsages(usageStr string) []cmv1.KeyUsage {
 	usageMap := map[string]cmv1.KeyUsage{
 		"client_auth":       cmv1.UsageClientAuth,
 		"server_auth":       cmv1.UsageServerAuth,
-		"digital_signature": cmv1.UsageDigitalSignature,
-		"key_encipherment":  cmv1.UsageKeyEncipherment,
-		"data_encipherment": cmv1.UsageDataEncipherment,
+		"code_signing":      cmv1.UsageCodeSigning,
+		"ocsp_signing":      cmv1.UsageOCSPSigning,
+		"any":               cmv1.UsageAny,
 	}
 
 	parts := strings.Split(strings.ReplaceAll(usageStr, " ", ""), ",")
@@ -210,6 +220,9 @@ func parseUsages(usageStr string) []cmv1.KeyUsage {
 			usages = append(usages, usage)
 		}
 	}
+
+	log.Printf("Parsed usages: %v", usages)
+
 	return usages
 }
 
@@ -235,6 +248,29 @@ func (issCtx *IssuerContext) verifyCertificateRequestState(ctx context.Context, 
 	if err != nil {
 		assert.FailNow(godog.T(ctx), "Certificate Request did not reach specified state, Condition = "+reason+", Status = "+status+": "+err.Error())
 	}
+
+	return nil
+}
+
+func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage string) error {
+	// The secret name is typically the same as the certificate name + "-cert-secret"
+	// or whatever was specified in the Certificate's spec.secretName
+	secretName := issCtx.certName + "-cert-secret"
+
+	certData, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
+	if err != nil {
+		assert.FailNow(godog.T(ctx), "Failed to get certificate data: "+err.Error())
+	}
+
+	// Now you can perform additional validation on the certificate text
+	// For example, check if it contains expected fields, is properly signed, etc.
+	if len(certData) == 0 {
+		assert.FailNow(godog.T(ctx), "Certificate data is empty")
+	}
+
+	log.Printf("Expected usage: %s", usage)
+	log.Printf("Certificate Data: %s", certData)
+	// You could add more specific validation here
 
 	return nil
 }
