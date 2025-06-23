@@ -275,32 +275,42 @@ func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage
 
 	log.Printf("Expected usage: %s", usage)
 
-
 	decodedData, _ := pem.Decode([]byte(certData))
 	if decodedData == nil {
 		assert.FailNow(godog.T(ctx), "Failed to decode certificate data")
 	}
 
 	cert, err := x509.ParseCertificate(decodedData.Bytes)
-
-	usageLabels := map[x509.ExtKeyUsage]string{
-		x509.ExtKeyUsageClientAuth: "client_auth",
-		x509.ExtKeyUsageServerAuth: "server_auth",
-		x509.ExtKeyUsageCodeSigning: "code_signing",
-		x509.ExtKeyUsageOCSPSigning: "ocsp_signing",
-		x509.ExtKeyUsageAny: "any",
+	if err != nil {
+		assert.FailNow(godog.T(ctx), "Failed to parse certificate: "+err.Error())
 	}
 
-	found := make(map[x509.ExtKeyUsage]bool)
+	usageLabels := map[x509.ExtKeyUsage]string{
+		x509.ExtKeyUsageClientAuth:  "client_auth",
+		x509.ExtKeyUsageServerAuth:  "server_auth",
+		x509.ExtKeyUsageCodeSigning: "code_signing",
+		x509.ExtKeyUsageOCSPSigning: "ocsp_signing",
+		x509.ExtKeyUsageAny:         "any",
+	}
 
-	for _, usage := range cert.ExtKeyUsage {
-        found[usage] = true
-        if label, ok := usageLabels[usage]; ok {
-            log.Printf("WE FOUND A USAGE TYPE FROM THE CERTIFICATE- %s\n", label)
-        } else {
-            log.Printf("- Unknown usage: %v\n", usage)
-        }
-    }
+	expectedUsages := strings.Split(usage, ",")
+
+	// Check if all expected usages are present in the certificate
+	for _, expectedUsage := range expectedUsages {
+		found := false
+		for _, extUsage := range cert.ExtKeyUsage {
+			if label, exists := usageLabels[extUsage]; exists {
+				if label == expectedUsage {
+					log.Printf("Found expected usage type in certificate: %s\n", label)
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			assert.FailNow(godog.T(ctx), "Certificate did not have expected usage: "+expectedUsage)
+		}
+	}
 
 	return nil
 }
