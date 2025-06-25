@@ -21,3 +21,34 @@ Feature: Issue certificates with specific key usages
       | RSA    | RSA      | ocsp_signing             |
       | RSA    | RSA      | any                      |
       | RSA    | RSA      | client_auth,server_auth  |
+
+@TemplatingIssuer
+  Scenario Outline: Issue certificate with specific template
+    Given I create an AWSPCAClusterIssuer with template <templateArn> using a <caType> CA
+    When I issue a <certType> certificate
+    Then the certificate should be issued successfully
+    Then the certificate should be issued with usage <expectedUsage>
+
+    Examples:
+      | caType | certType | templateArn                                           | expectedUsage             |
+      | RSA    | RSA      | EndEntityCertificate/V1                               | client_auth,server_auth   |
+      | RSA    | RSA      | EndEntityClientAuthCertificate/V1                     | client_auth               |
+      | RSA    | RSA      | EndEntityServerAuthCertificate/V1                     | server_auth               |
+      | RSA    | RSA      | CodeSigningCertificate/V1                             | code_signing              |
+      | RSA    | RSA      | OCSPSigningCertificate/V1                             | ocsp_signing              |
+
+@TemplatingIssuer
+  Scenario Outline: Issue certificate with specific template
+    Given I create an AWSPCAIssuer with template <templateArn> using a <caType> CA
+    When I issue a <certType> certificate
+    Then the certificate should be issued successfully
+    Then the certificate should be issued with usage <expectedUsage>
+
+    Examples:
+      | caType | certType | templateArn                                           | expectedUsage             |
+      | RSA    | RSA      | EndEntityCertificate/V1                               | client_auth,server_auth   |
+      | RSA    | RSA      | EndEntityClientAuthCertificate/V1                     | client_auth               |
+      | RSA    | RSA      | EndEntityServerAuthCertificate/V1                     | server_auth               |
+      | RSA    | RSA      | CodeSigningCertificate/V1                             | code_signing              |
+      | RSA    | RSA      | OCSPSigningCertificate/V1                             | ocsp_signing              |
+

@@ -24,16 +24,18 @@ import (
 
 type CertificateConfig struct {
 	CertType string
-	Usages   []cmv1.KeyUsage // optional, will be nil if not provided
+	Usages   []cmv1.KeyUsage 
 }
 
 var usageMap = map[string]cmv1.KeyUsage{
 	"client_auth":       cmv1.UsageClientAuth,
 	"server_auth":       cmv1.UsageServerAuth,
 	"digital_signature": cmv1.UsageDigitalSignature,
-	"key_encipherment":  cmv1.UsageKeyEncipherment,
-	"data_encipherment": cmv1.UsageDataEncipherment,
+	"code_signing":      cmv1.UsageCodeSigning,   
+	"ocsp_signing":      cmv1.UsageOCSPSigning,    
+	"any":               cmv1.UsageAny,            
 }
+
 
 func getCaArn(caType string) string {
 	caArn, exists := testContext.caArns[caType]
@@ -168,8 +170,6 @@ func getCertSpecWithValidity(certSpec cmv1.CertificateSpec, duration time.Durati
 		Duration: renewBefore * time.Hour,
 	}
 
-	certSpec.Usages = usages
-
 	return certSpec
 }
 
@@ -213,10 +213,10 @@ func (issCtx *IssuerContext) issueCertificate(ctx context.Context, certConfig Ce
 		Spec:       certSpec,
 	}
 
-	_, err := testContext.cmClient.Certificates(issCtx.namespace).Create(certReq.Ctx, &certificate, metav1.CreateOptions{})
+	_, err := testContext.cmClient.Certificates(issCtx.namespace).Create(ctx, &certificate, metav1.CreateOptions{})
 
 	if err != nil {
-		assert.FailNow(godog.T(certReq.Ctx), "Could not create certificate: "+err.Error())
+		assert.FailNow(godog.T(ctx), "Could not create certificate: "+err.Error())
 	}
 
 	return nil
