@@ -24,18 +24,17 @@ import (
 
 type CertificateConfig struct {
 	CertType string
-	Usages   []cmv1.KeyUsage 
+	Usages   []cmv1.KeyUsage
 }
 
 var usageMap = map[string]cmv1.KeyUsage{
 	"client_auth":       cmv1.UsageClientAuth,
 	"server_auth":       cmv1.UsageServerAuth,
 	"digital_signature": cmv1.UsageDigitalSignature,
-	"code_signing":      cmv1.UsageCodeSigning,   
-	"ocsp_signing":      cmv1.UsageOCSPSigning,    
-	"any":               cmv1.UsageAny,            
+	"code_signing":      cmv1.UsageCodeSigning,
+	"ocsp_signing":      cmv1.UsageOCSPSigning,
+	"any":               cmv1.UsageAny,
 }
-
 
 func getCaArn(caType string) string {
 	caArn, exists := testContext.caArns[caType]
@@ -116,7 +115,7 @@ func getBaseCertSpec(certConfig CertificateConfig) cmv1.CertificateSpec {
 	sanitizedCertType := strings.Replace(strings.ToLower(certConfig.CertType), "_", "-", -1)
 
 	if len(certConfig.Usages) == 0 {
-		certConfig.Usages = []cmv1.KeyUsage{cmv1.UsageAny}
+		certConfig.Usages = []cmv1.KeyUsage{cmv1.UsageDigitalSignature, cmv1.UsageKeyEncipherment} // These are cert-manager's defaults
 	}
 
 	certSpec := cmv1.CertificateSpec{
@@ -262,7 +261,7 @@ func (issCtx *IssuerContext) verifyCertificateRequestState(ctx context.Context, 
 	return nil
 }
 
-func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage string) error {
+func (issCtx *IssuerContext) verifyCertificateUsage(ctx context.Context, usage string) error {
 	// The secret name is typically the same as the certificate name + "-cert-secret"
 	secretName := issCtx.certName + "-cert-secret"
 
@@ -316,3 +315,56 @@ func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage
 
 	return nil
 }
+
+func (issCtx *IssuerContext) verifyCertificateAuthority(ctx context.Context, pathLen string) error {
+	secretName := issCtx.certName + "-cert-secret"
+
+	certData, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
+	if err != nil {
+		assert.FailNow(godog.T(ctx), "Failed to get certificate data: "+err.Error())
+	}
+
+	if len(certData) == 0 {
+		assert.FailNow(godog.T(ctx), "Certificate data is empty")
+	}
+
+	decodedData, _ := pem.Decode([]byte(certData))
+	if decodedData == nil {
+		assert.FailNow(godog.T(ctx), "Failed to decode certificate data")
+	}
+
+	cert, err := x509.ParseCertificate(decodedData.Bytes)
+	if err != nil {
+		assert.FailNow(godog.T(ctx), "Failed to parse certificate: "+err.Error())
+	}
+
+	// Verify this is a CA certificate
+	if !cert.IsCA {
+		assert.FailNow(godog.T(ctx), "Certificate is not a CA certificate")
+	}
+
+	// Parse expected pathLen
+	expectedPathLen := -1
+	if pathLen != "unlimited" {
+		expectedPathLen = 0
+		for _, char := range pathLen {
+			if char >= '0' && char <= '9' {
+				expectedPathLen = expectedPathLen*10 + int(char-'0')
+			}
+		}
+	}
+
+	// Verify pathLen constraint
+	if expectedPathLen == -1 {
+		if cert.MaxPathLen != -1 {
+			assert.FailNow(godog.T(ctx), fmt.Sprintf("Expected unlimited pathLen but got %d", cert.MaxPathLen))
+		}
+	} else {
+		if cert.MaxPathLen != expectedPathLen {
+			assert.FailNow(godog.T(ctx), fmt.Sprintf("Expected pathLen %d but got %d", expectedPathLen, cert.MaxPathLen))
+		}
+	}
+
+	return nil
+}
+

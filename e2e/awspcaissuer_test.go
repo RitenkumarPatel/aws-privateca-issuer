@@ -52,7 +52,7 @@ func TestMain(m *testing.M) {
 	_, xaRoleExists := os.LookupEnv("PLUGIN_CROSS_ACCOUNT_ROLE")
 	if !xaRoleExists {
 		log.Printf("Just TemplatingIssuer tests")
-		o.Tags = "~@CrossAccount"
+		o.Tags = "@TemplatingIssuer"
 	}
 	status := godog.TestSuite{
 		Name:                 "AWSPrivateCAIssuer",
@@ -214,7 +214,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I issue a (SHORT_VALIDITY|RSA|ECDSA|CA) certificate with usage (.+)$`, issuerContext.issueCertificateWithUsage)
 
 	ctx.Step(`^the certificate should be issued successfully$`, issuerContext.verifyCertificateIssued)
-	ctx.Step(`^the certificate should be issued with usage (.+)$`, issuerContext.verifyCertificateContent)
+	ctx.Step(`^the certificate should be issued with usage (.+)$`, issuerContext.verifyCertificateUsage)
 
 	ctx.Step(`^the certificate request has reason (Pending|Failed|Issued|Denied) and status (True|False|Unknown)$`, issuerContext.verifyCertificateRequestState)
 
