@@ -51,8 +51,8 @@ func TestMain(m *testing.M) {
 
 	_, xaRoleExists := os.LookupEnv("PLUGIN_CROSS_ACCOUNT_ROLE")
 	if !xaRoleExists {
-		log.Printf("Just TemplatingIssuer tests")
-		o.Tags = "@TemplatingIssuer"
+		log.Printf("Skipping CrossAccount tests")
+		o.Tags = "~@CrossAccount"
 	}
 	status := godog.TestSuite{
 		Name:                 "AWSPrivateCAIssuer",
@@ -114,17 +114,21 @@ func InitializeTestSuite(suiteCtx *godog.TestSuiteContext) {
 		}
 
 		// Create CAs to be used in testing
-		testContext.caArns["RSA"] = createCertificateAuthority(ctx, cfg, true)
+		testContext.caArns["RSA"] = createCertificateAuthority(ctx, cfg, true, "Root")
 		log.Printf("Created RSA CA with arn %s", testContext.caArns["RSA"])
-
-		testContext.caArns["ECDSA"] = createCertificateAuthority(ctx, cfg, false)
+		testContext.caArns["ECDSA"] = createCertificateAuthority(ctx, cfg, false, "Root")
 		log.Printf("Created EC CA with arn %s", testContext.caArns["ECDSA"])
+
+		testContext.caArns["RSA-SUB"] = createCertificateAuthority(ctx, cfg, true, testContext.caArns["RSA"])
+		log.Printf("Created RSA subordinate CA with arn %s and pathlength 1", testContext.caArns["RSA-SUB"])
+		testContext.caArns["ECDSA-SUB"] = createCertificateAuthority(ctx, cfg, false, testContext.caArns["ECDSA"])
+		log.Printf("Created EC subordinate CA with arn %s and pathlength 1", testContext.caArns["ECDSA-SUB"])
 
 		xaRole, xaRoleExists := os.LookupEnv("PLUGIN_CROSS_ACCOUNT_ROLE")
 		if xaRoleExists {
 			testContext.xaCfg = assumeRole(ctx, cfg, xaRole, testContext.region)
 
-			testContext.caArns["XA"] = createCertificateAuthority(ctx, testContext.xaCfg, true)
+			testContext.caArns["XA"] = createCertificateAuthority(ctx, testContext.xaCfg, true, "Root")
 
 			log.Printf("Created XA CA with arn %s", testContext.caArns["XA"])
 
@@ -167,6 +171,12 @@ func InitializeTestSuite(suiteCtx *godog.TestSuiteContext) {
 		deleteCertificateAuthority(ctx, cfg, testContext.caArns["ECDSA"])
 		log.Printf("Deleted the EC CA")
 
+		deleteCertificateAuthority(ctx, cfg, testContext.caArns["RSA-SUB"])
+		log.Printf("Deleted the RSA sub CA")
+
+		deleteCertificateAuthority(ctx, cfg, testContext.caArns["ECDSA-SUB"])
+		log.Printf("Deleted the ECDSA sub CA")
+
 		//Delete IAM User and policy
 		deleteAccessKey(ctx, cfg, testContext.userName, testContext.accessKey)
 		log.Printf("Deleted the Access Key")
@@ -203,16 +213,17 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I create a namespace`, issuerContext.createNamespace)
 	ctx.Step(`^I create a Secret with keys ([A-Za-z_]+) and ([A-Za-z_]+) for my AWS credentials$`, issuerContext.createSecret)
 
-	ctx.Step(`^I create an AWSPCAClusterIssuer using a (RSA|ECDSA|XA) CA$`, issuerContext.createClusterIssuer)
-	ctx.Step(`^I create an AWSPCAClusterIssuer with template (.+) using a (RSA|ECDSA|XA) CA$`, issuerContext.createClusterIssuerWithTemplate)
+	ctx.Step(`^I create an AWSPCAClusterIssuer using a (RSA|ECDSA|RSA-SUB|ECDSA-SUB|XA) CA$`, issuerContext.createClusterIssuer)
+	ctx.Step(`^I create an AWSPCAClusterIssuer with template (.+) using a (RSA|ECDSA|RSA-SUB|ECDSA-SUB|XA) CA$`, issuerContext.createClusterIssuerWithTemplate)
 	ctx.Step(`^I delete the AWSPCAClusterIssuer$`, issuerContext.deleteClusterIssuer)
 
-	ctx.Step(`^I create an AWSPCAIssuer using a (RSA|ECDSA|XA) CA$`, issuerContext.createNamespaceIssuer)
-	ctx.Step(`^I create an AWSPCAIssuer with template (.+) using a (RSA|ECDSA|XA) CA$`, issuerContext.createNamespaceIssuerWithTemplate)
+	ctx.Step(`^I create an AWSPCAIssuer using a (RSA|ECDSA|RSA-SUB|ECDSA-SUB|XA) CA$`, issuerContext.createNamespaceIssuer)
+	ctx.Step(`^I create an AWSPCAIssuer with template (.+) using a (RSA|ECDSA|RSA-SUB|ECDSA-SUB|XA) CA$`, issuerContext.createNamespaceIssuerWithTemplate)
 
 	ctx.Step(`^I issue a (SHORT_VALIDITY|RSA|ECDSA|CA) certificate$`, issuerContext.issueCertificateWithKeyType)
 	ctx.Step(`^I issue a (SHORT_VALIDITY|RSA|ECDSA|CA) certificate with usage (.+)$`, issuerContext.issueCertificateWithUsage)
 
+	ctx.Step(`^the CA certificate should have path length (.+)`, issuerContext.verifyCertificateAuthority)
 	ctx.Step(`^the certificate should be issued successfully$`, issuerContext.verifyCertificateIssued)
 	ctx.Step(`^the certificate should be issued with usage (.+)$`, issuerContext.verifyCertificateUsage)
 

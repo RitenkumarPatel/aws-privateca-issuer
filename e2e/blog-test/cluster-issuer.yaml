@@ -5,4 +5,4 @@ metadata:
 spec:
   arn: arn:aws:acm-pca:us-east-2:012509421284:certificate-authority/b894cd0f-35ae-48b7-8ee9-9d915940690b
   region: us-east-2
-  templateArn: SubordinateCACertificate_PathLen1/V1
+  templateArn: BlankSubordinateCACertificate_PathLen3/V1
