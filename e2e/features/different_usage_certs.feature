@@ -21,3 +21,6 @@ Feature: Issue certificates with specific key usages
       | RSA    | RSA      | ocsp_signing             |
       | RSA    | RSA      | any                      |
       | RSA    | RSA      | client_auth,server_auth  |
+      | RSA    | RSA      | email protection         |
+      | RSA    | RSA      | ipsec user               |
+      | RSA    | RSA      | ipsec tunnel             |     

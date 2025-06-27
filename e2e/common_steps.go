@@ -27,12 +27,15 @@ type CertificateConfig struct {
 	Usages   []cmv1.KeyUsage // optional, will be nil if not provided
 }
 
+const secretSuffix = "-cert-secret"
+
 var usageMap = map[string]cmv1.KeyUsage{
 	"client_auth":       cmv1.UsageClientAuth,
 	"server_auth":       cmv1.UsageServerAuth,
 	"digital_signature": cmv1.UsageDigitalSignature,
-	"key_encipherment":  cmv1.UsageKeyEncipherment,
-	"data_encipherment": cmv1.UsageDataEncipherment,
+	"code_signing":      cmv1.UsageCodeSigning,
+	"ocsp_signing":      cmv1.UsageOCSPSigning,
+	"any":               cmv1.UsageAny,
 }
 
 func getCaArn(caType string) string {
@@ -198,7 +201,7 @@ func (issCtx *IssuerContext) issueCertificate(ctx context.Context, certConfig Ce
 	issCtx.certName = issCtx.issuerName + "-" + sanitizedCertType + "-cert"
 	certSpec := getCertSpec(certConfig)
 
-	secretName := issCtx.certName + "-cert-secret"
+	secretName := issCtx.certName + secretSuffix
 	certSpec.SecretName = secretName
 	certSpec.IssuerRef = cmmeta.ObjectReference{
 		Kind:  issCtx.issuerType,
@@ -225,9 +228,9 @@ func parseUsages(usageStr string) []cmv1.KeyUsage {
 	var usages []cmv1.KeyUsage
 	for _, part := range parts {
 		if usage, exists := usageMap[strings.ToLower(part)]; exists {
-			usages = append(usages, usage)
+			usages = append(usages, usage) // Mapping to a template
 		} else {
-			assert.FailNow(godog.T(context.Background()), "Unknown usage: "+part)
+			usages = append(usages, cmv1.KeyUsage(part)) // Passing in key usage
 		}
 	}
 
@@ -261,21 +264,20 @@ func (issCtx *IssuerContext) verifyCertificateRequestState(ctx context.Context, 
 }
 
 func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage string) error {
-	// The secret name is typically the same as the certificate name + "-cert-secret"
-	secretName := issCtx.certName + "-cert-secret"
+	secretName := issCtx.certName + secretSuffix
 
-	certData, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
+	certBytes, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
 	if err != nil {
 		assert.FailNow(godog.T(ctx), "Failed to get certificate data: "+err.Error())
 	}
 
-	if len(certData) == 0 {
+	if len(certBytes) == 0 {
 		assert.FailNow(godog.T(ctx), "Certificate data is empty")
 	}
 
 	log.Printf("Expected usage: %s", usage)
 
-	decodedData, _ := pem.Decode([]byte(certData))
+	decodedData, _ := pem.Decode(certBytes)
 	if decodedData == nil {
 		assert.FailNow(godog.T(ctx), "Failed to decode certificate data")
 	}
@@ -286,31 +288,34 @@ func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage
 	}
 
 	usageLabels := map[x509.ExtKeyUsage]string{
-		x509.ExtKeyUsageClientAuth:  "client_auth",
-		x509.ExtKeyUsageServerAuth:  "server_auth",
-		x509.ExtKeyUsageCodeSigning: "code_signing",
-		x509.ExtKeyUsageOCSPSigning: "ocsp_signing",
-		x509.ExtKeyUsageAny:         "any",
+		x509.ExtKeyUsageClientAuth:     "client_auth",
+		x509.ExtKeyUsageServerAuth:     "server_auth",
+		x509.ExtKeyUsageCodeSigning:    "code_signing",
+		x509.ExtKeyUsageOCSPSigning:    "ocsp_signing",
+		x509.ExtKeyUsageAny:            "any",
+		x509.ExtKeyUsageEmailProtection: "email protection",
+		x509.ExtKeyUsageIPSECUser:      "ipsec user",
+		x509.ExtKeyUsageIPSECTunnel:	"ipsec tunnel",
 	}
 
 	expectedUsages := strings.Split(usage, ",")
 
-	// Check if all expected usages are present in the certificate
 	for _, expectedUsage := range expectedUsages {
 		found := false
+		
 		for _, extUsage := range cert.ExtKeyUsage {
-			if label, exists := usageLabels[extUsage]; exists {
-				if label == expectedUsage {
-					log.Printf("Found expected usage type in certificate: %s\n", label)
-					found = true
-					break
-				}
+			if label, exists := usageLabels[extUsage]; exists && label == expectedUsage {
+				log.Printf("Found expected usage type in certificate: %s\n", label)
+				found = true
+				break
 			}
 		}
+		
 		if !found {
 			assert.FailNow(godog.T(ctx), "Certificate did not have expected usage: "+expectedUsage)
 		}
 	}
+
 
 	return nil
 }
