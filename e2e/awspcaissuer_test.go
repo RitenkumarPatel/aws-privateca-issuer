@@ -41,7 +41,7 @@ type IssuerContext struct {
 }
 
 var opts = godog.Options{
-	Concurrency: 12,
+	Concurrency: 8,
 	Format:      "pretty",
 	Paths:       []string{"features"},
 }
@@ -217,6 +217,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the certificate should be issued with usage (.+)$`, issuerContext.verifyCertificateUsage)
 
 	ctx.Step(`^the certificate request has reason (Pending|Failed|Issued|Denied) and status (True|False|Unknown)$`, issuerContext.verifyCertificateRequestState)
+
+	ctx.Step(`^the certificate should be issued with usage (.+)$`, issuerContext.verifyCertificateContent)
 
 	// This cleans up all of the resources after a test
 	ctx.After(func(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
