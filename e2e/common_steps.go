@@ -11,11 +11,11 @@ import (
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-
-	"log"
+	util "github.com/cert-manager/cert-manager/pkg/api/util"
 
 	"crypto/x509"
 	"encoding/pem"
+	"slices"
 
 	"github.com/cert-manager/aws-privateca-issuer/pkg/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -36,7 +36,11 @@ var usageMap = map[string]cmv1.KeyUsage{
 	"code_signing":      cmv1.UsageCodeSigning,
 	"ocsp_signing":      cmv1.UsageOCSPSigning,
 	"any":               cmv1.UsageAny,
+	"email protection":  cmv1.UsageEmailProtection,
+	"ipsec user":        cmv1.UsageIPsecUser,
+	"ipsec tunnel":      cmv1.UsageIPsecTunnel,
 }
+
 
 func getCaArn(caType string) string {
 	caArn, exists := testContext.caArns[caType]
@@ -228,9 +232,9 @@ func parseUsages(usageStr string) []cmv1.KeyUsage {
 	var usages []cmv1.KeyUsage
 	for _, part := range parts {
 		if usage, exists := usageMap[strings.ToLower(part)]; exists {
-			usages = append(usages, usage) // Mapping to a template
+			usages = append(usages, usage) 
 		} else {
-			usages = append(usages, cmv1.KeyUsage(part)) // Passing in key usage
+			usages = append(usages, cmv1.KeyUsage(part)) 
 		}
 	}
 
@@ -275,8 +279,6 @@ func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage
 		assert.FailNow(godog.T(ctx), "Certificate data is empty")
 	}
 
-	log.Printf("Expected usage: %s", usage)
-
 	decodedData, _ := pem.Decode(certBytes)
 	if decodedData == nil {
 		assert.FailNow(godog.T(ctx), "Failed to decode certificate data")
@@ -287,35 +289,17 @@ func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage
 		assert.FailNow(godog.T(ctx), "Failed to parse certificate: "+err.Error())
 	}
 
-	usageLabels := map[x509.ExtKeyUsage]string{
-		x509.ExtKeyUsageClientAuth:     "client_auth",
-		x509.ExtKeyUsageServerAuth:     "server_auth",
-		x509.ExtKeyUsageCodeSigning:    "code_signing",
-		x509.ExtKeyUsageOCSPSigning:    "ocsp_signing",
-		x509.ExtKeyUsageAny:            "any",
-		x509.ExtKeyUsageEmailProtection: "email protection",
-		x509.ExtKeyUsageIPSECUser:      "ipsec user",
-		x509.ExtKeyUsageIPSECTunnel:	"ipsec tunnel",
-	}
-
-	expectedUsages := strings.Split(usage, ",")
-
-	for _, expectedUsage := range expectedUsages {
-		found := false
-		
-		for _, extUsage := range cert.ExtKeyUsage {
-			if label, exists := usageLabels[extUsage]; exists && label == expectedUsage {
-				log.Printf("Found expected usage type in certificate: %s\n", label)
-				found = true
-				break
-			}
+	for _, expectedUsage := range strings.Split(usage, ",") {
+		mappedUsage, exists := usageMap[expectedUsage]
+		if !exists {
+			assert.FailNow(godog.T(ctx), "Expected usage %q not found in usageMap.", expectedUsage)
 		}
 		
-		if !found {
-			assert.FailNow(godog.T(ctx), "Certificate did not have expected usage: "+expectedUsage)
+		x509Usage, _ := util.ExtKeyUsageType(mappedUsage)
+		if !slices.Contains(cert.ExtKeyUsage, x509Usage) {
+			assert.FailNow(godog.T(ctx), fmt.Sprintf("Certificate usage mismatch. Found: %v, Expected: %v", cert.ExtKeyUsage, mappedUsage))
 		}
 	}
-
 
 	return nil
 }
