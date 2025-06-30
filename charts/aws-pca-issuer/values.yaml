@@ -72,7 +72,7 @@ resources:
     cpu: 50m
     memory: 64Mi
   requests:
-    cpu: 50m
+    cpu: 20m
     memory: 64Mi
 
 # Kubernetes node selector: node labels for pod assignment

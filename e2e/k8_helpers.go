@@ -104,17 +104,16 @@ func waitForCertificateState(ctx context.Context, client *cmclientv1.Certmanager
 		})
 }
 
-func getCertificateData(ctx context.Context, clientset *kubernetes.Clientset, namespace string, secretName string) ([]byte, error) {
+func getCertificateData(ctx context.Context, clientset *kubernetes.Clientset, namespace string, secretName string) (string, error) {
 	secret, err := clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting certificate secret %q: %v", secretName, err)
+		return "", fmt.Errorf("error getting certificate secret %q: %v", secretName, err)
 	}
 
-	// The certificate is stored in the 'tls.crt' key of the secret data
 	certBytes, exists := secret.Data["tls.crt"]
 	if !exists {
-		return nil, fmt.Errorf("certificate data not found in secret %q", secretName)
+		return "", fmt.Errorf("certificate data not found in secret %q", secretName)
 	}
 
-	return certBytes, nil
+	return string(certBytes), nil
 }

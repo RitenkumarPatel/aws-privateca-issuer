@@ -109,6 +109,9 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
                 x-kubernetes-map-type: atomic
+              templateArn:
+                description: Specifies the template ARN of the issuer
+                type: string
             type: object
           status:
             description: AWSPCAIssuerStatus defines the observed state of AWSPCAIssuer

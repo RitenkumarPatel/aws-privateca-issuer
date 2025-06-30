@@ -29,6 +29,17 @@ type policyDocument struct {
 	Statement []statementEntry
 }
 
+type CAParms struct {
+	signingAlgorithm types.SigningAlgorithm
+	keyAlgorithm     types.KeyAlgorithm
+	caType           types.CertificateAuthorityType
+	commonName       string
+	issuerCAArn      *string
+	templateArn      string
+	validity         types.Validity
+}
+
+
 func createUser(ctx context.Context, cfg aws.Config) (string, string) {
 	iamClient := iam.NewFromConfig(cfg)
 
@@ -177,29 +188,47 @@ func deleteCertificateAuthority(ctx context.Context, cfg aws.Config, caArn strin
 
 }
 
-func createCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA bool) string {
+func createCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA bool, parentCAArn string) string {
 	pcaClient := acmpca.NewFromConfig(cfg)
 
-	var signingAlgorithm types.SigningAlgorithm
-	var keyAlgorithm types.KeyAlgorithm
+	var params CAParms
 
 	if isRSA {
-		signingAlgorithm = types.SigningAlgorithmSha256withrsa
-		keyAlgorithm = types.KeyAlgorithmRsa2048
+		params.signingAlgorithm = types.SigningAlgorithmSha256withrsa
+		params.keyAlgorithm = types.KeyAlgorithmRsa2048
 	} else {
-		signingAlgorithm = types.SigningAlgorithmSha256withecdsa
-		keyAlgorithm = types.KeyAlgorithmEcPrime256v1
+		params.signingAlgorithm = types.SigningAlgorithmSha256withecdsa
+		params.keyAlgorithm = types.KeyAlgorithmEcPrime256v1
 	}
 
-	commonName := "CMTest-" + strconv.FormatInt(time.Now().Unix(), 10)
+	isRoot := parentCAArn == "Root"
+	if isRoot {
+		params.caType = types.CertificateAuthorityTypeRoot
+		params.commonName = "CMTest-" + strconv.FormatInt(time.Now().Unix(), 10)
+		params.issuerCAArn = nil // will be set to caArn later
+		params.templateArn = "arn:aws:acm-pca:::template/RootCACertificate/V1"
+		params.validity = types.Validity{
+			Type:  types.ValidityPeriodTypeYears,
+			Value: aws.Int64(365),
+		}
+	} else {
+		params.caType = types.CertificateAuthorityTypeSubordinate
+		params.commonName = "CMSubordinate-" + strconv.FormatInt(time.Now().Unix(), 10)
+		params.issuerCAArn = &parentCAArn
+		params.templateArn = "arn:aws:acm-pca:::template/SubordinateCACertificate_PathLen1/V1"
+		params.validity = types.Validity{
+			Type:  types.ValidityPeriodTypeYears,
+			Value: aws.Int64(30),
+		}
+	}
 
 	createCertificateAuthorityParams := acmpca.CreateCertificateAuthorityInput{
-		CertificateAuthorityType: types.CertificateAuthorityTypeRoot,
+		CertificateAuthorityType: params.caType,
 		CertificateAuthorityConfiguration: &types.CertificateAuthorityConfiguration{
-			KeyAlgorithm:     keyAlgorithm,
-			SigningAlgorithm: signingAlgorithm,
+			KeyAlgorithm:     params.keyAlgorithm,
+			SigningAlgorithm: params.signingAlgorithm,
 			Subject: &types.ASN1Subject{
-				CommonName: aws.String(commonName),
+				CommonName: aws.String(params.commonName),
 			},
 		},
 	}
@@ -229,17 +258,16 @@ func createCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA bool)
 		panic(csrErr.Error())
 	}
 
-	caCsr := csrOutput.Csr
+	if isRoot {
+		params.issuerCAArn = caArn
+	}
 
 	issuerCertificateParms := acmpca.IssueCertificateInput{
-		CertificateAuthorityArn: caArn,
-		Csr:                     []byte(*caCsr),
-		SigningAlgorithm:        signingAlgorithm,
-		TemplateArn:             aws.String("arn:aws:acm-pca:::template/RootCACertificate/V1"),
-		Validity: &types.Validity{
-			Type:  types.ValidityPeriodTypeDays,
-			Value: aws.Int64(365),
-		},
+		CertificateAuthorityArn: params.issuerCAArn,
+		Csr:                     []byte(*csrOutput.Csr),
+		SigningAlgorithm:        params.signingAlgorithm,
+		TemplateArn:             aws.String(params.templateArn),
+		Validity:                &params.validity,
 	}
 
 	issueOutput, issueErr := pcaClient.IssueCertificate(ctx, &issuerCertificateParms)
@@ -248,11 +276,9 @@ func createCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA bool)
 		panic(issueErr.Error())
 	}
 
-	caCertArn := issueOutput.CertificateArn
-
 	getCertParams := acmpca.GetCertificateInput{
-		CertificateArn:          caCertArn,
-		CertificateAuthorityArn: caArn,
+		CertificateArn:          issueOutput.CertificateArn,
+		CertificateAuthorityArn: params.issuerCAArn,
 	}
 
 	certWaiter := acmpca.NewCertificateIssuedWaiter(pcaClient)
@@ -267,11 +293,14 @@ func createCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA bool)
 		panic(getCertErr.Error())
 	}
 
-	certPem := []byte(*getCertOutput.Certificate)
-
 	importCertParms := acmpca.ImportCertificateAuthorityCertificateInput{
-		Certificate:             certPem,
+		Certificate:             []byte(*getCertOutput.Certificate),
 		CertificateAuthorityArn: caArn,
+	}
+
+	// For subordinate CAs, include the certificate chain
+	if !isRoot && getCertOutput.CertificateChain != nil {
+		importCertParms.CertificateChain = []byte(*getCertOutput.CertificateChain)
 	}
 
 	_, importCertErr := pcaClient.ImportCertificateAuthorityCertificate(ctx, &importCertParms)
