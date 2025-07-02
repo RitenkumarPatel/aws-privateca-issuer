@@ -6,7 +6,7 @@ metadata:
 spec:
   arn: <some-pca-arn>
   region: eu-west-1
-  templateArn: SubordinateCACertificate_PathLen1/V1
+  pcaTemplateName: SubordinateCACertificate_PathLen1/V1
   secretRef:
     namespace: default
     name: example

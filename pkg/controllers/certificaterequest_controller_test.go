@@ -51,7 +51,7 @@ type fakeProvisioner struct {
 	signErr error
 }
 
-func (p *fakeProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest, issuerSpec *issuerapi.AWSPCAIssuerSpec, log logr.Logger) error {
+func (p *fakeProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest, pcaTemplateName string, log logr.Logger) error {
 	metav1.SetMetaDataAnnotation(&cr.ObjectMeta, "aws-privateca-issuer/certificate-arn", "arn")
 	return p.signErr
 }

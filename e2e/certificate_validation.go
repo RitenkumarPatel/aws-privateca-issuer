@@ -63,7 +63,7 @@ func (issCtx *IssuerContext) verifyCertificateRequestState(ctx context.Context, 
 	return nil
 }
 
-func (issCtx *IssuerContext) getCertificateSecret(ctx context.Context) *x509.Certificate {
+func (issCtx *IssuerContext) parseCertificateSecret(ctx context.Context) *x509.Certificate {
 	secretName := issCtx.certName + "-cert-secret"
 
 	certData, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
@@ -71,7 +71,7 @@ func (issCtx *IssuerContext) getCertificateSecret(ctx context.Context) *x509.Cer
 		assert.FailNow(godog.T(ctx), "Failed to get certificate data: "+err.Error())
 	}
 
-	decodedData, _ := pem.Decode([]byte(certData))
+	decodedData, _ := pem.Decode(certData)
 	if decodedData == nil {
 		assert.FailNow(godog.T(ctx), "Failed to decode certificate data")
 	}
@@ -85,7 +85,7 @@ func (issCtx *IssuerContext) getCertificateSecret(ctx context.Context) *x509.Cer
 }
 
 func (issCtx *IssuerContext) verifyCertificateUsage(ctx context.Context, usage string) error {
-	cert := issCtx.getCertificateSecret(ctx)
+	cert := issCtx.parseCertificateSecret(ctx)
 
 	for _, expectedUsage := range strings.Split(usage, ",") {
 		mappedUsage, exists := usageMap[expectedUsage]
@@ -102,8 +102,8 @@ func (issCtx *IssuerContext) verifyCertificateUsage(ctx context.Context, usage s
 	return nil
 }
 
-func (issCtx *IssuerContext) verifyCertificateAuthority(ctx context.Context, pathLen int) error {
-	cert := issCtx.getCertificateSecret(ctx)
+func (issCtx *IssuerContext) verifyCertificateAuthorityPathLen(ctx context.Context, pathLen int) error {
+	cert := issCtx.parseCertificateSecret(ctx)
 
 	if !cert.IsCA {
 		assert.FailNow(godog.T(ctx), "Certificate is not a CA certificate")

@@ -37,9 +37,9 @@ spec:
           spec:
             description: AWSPCAIssuerSpec defines the desired state of AWSPCAIssuer
             properties:
-              templateArn:
-                description: Specifies the ARN of the template to use for issuing
-                  certificates. If not specified, the issuer will take the template from the certificate resource.
+              pcaTemplateName:
+                description: Specifies the template ARN of the issuer
+                  certificates. If not specified, the issuer will follow the fields on the certificate resource.
                 type: string 
               arn:
                 description: Specifies the ARN of the PCA resource

@@ -334,7 +334,7 @@ func TestPCATemplateArn(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			spec := tc.certificateSpec
 
-			response := templateArn(arn, spec, nil)
+			response := BuildTemplateArn(arn, spec, nil)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:aws:"), "returns expected ARN prefix")
 		})
@@ -343,7 +343,7 @@ func TestPCATemplateArn(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			spec := tc.certificateSpec
 
-			response := templateArn(govArn, spec, nil)
+			response := BuildTemplateArn(govArn, spec, nil)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "us-gov returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:aws-us-gov:"), "us-gov returns expected ARN prefix")
 		})
@@ -352,7 +352,7 @@ func TestPCATemplateArn(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			spec := tc.certificateSpec
 
-			response := templateArn(fakeArn, spec, nil)
+			response := BuildTemplateArn(fakeArn, spec, nil)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "fake arn returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:fake:"), "fake arn returns expected ARN prefix")
 		})
@@ -804,7 +804,7 @@ func TestPCASign(t *testing.T) {
 				},
 			}
 
-			err := tc.provisioner.Sign(context.TODO(), cr, nil, logr.Discard())
+			err := tc.provisioner.Sign(context.TODO(), cr, "", logr.Discard())
 
 			if tc.expectFailure && err == nil {
 				fmt.Print(err.Error())
@@ -867,7 +867,7 @@ func TestPCASignValidity(t *testing.T) {
 				},
 			}
 
-			_ = provisioner.Sign(context.TODO(), cr, nil, logr.Discard())
+			_ = provisioner.Sign(context.TODO(), cr, "", logr.Discard())
 			got := client.issueCertInput
 			if got == nil {
 				assert.Fail(t, "Expected certificate input, got none")

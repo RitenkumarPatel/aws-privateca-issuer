@@ -111,21 +111,21 @@ func InitializeTestSuite(suiteCtx *godog.TestSuiteContext) {
 		}
 
 		// Create CAs to be used in testing
-		testContext.caArns["RSA"] = createCertificateAuthority(ctx, cfg, true, "Root")
+		testContext.caArns["RSA"] = createRootCertificateAuthority(ctx, cfg, true)
 		log.Printf("Created RSA CA with arn %s", testContext.caArns["RSA"])
-		testContext.caArns["ECDSA"] = createCertificateAuthority(ctx, cfg, false, "Root")
+		testContext.caArns["ECDSA"] = createRootCertificateAuthority(ctx, cfg, false)
 		log.Printf("Created EC CA with arn %s", testContext.caArns["ECDSA"])
 
-		testContext.caArns["RSA-SUB"] = createCertificateAuthority(ctx, cfg, true, testContext.caArns["RSA"])
+		testContext.caArns["RSA-SUB"] = createSubCertificateAuthority(ctx, cfg, true, testContext.caArns["RSA"])
 		log.Printf("Created RSA subordinate CA with arn %s and pathlength 1", testContext.caArns["RSA-SUB"])
-		testContext.caArns["ECDSA-SUB"] = createCertificateAuthority(ctx, cfg, false, testContext.caArns["ECDSA"])
+		testContext.caArns["ECDSA-SUB"] = createSubCertificateAuthority(ctx, cfg, false, testContext.caArns["ECDSA"])
 		log.Printf("Created EC subordinate CA with arn %s and pathlength 1", testContext.caArns["ECDSA-SUB"])
 
 		xaRole, xaRoleExists := os.LookupEnv("PLUGIN_CROSS_ACCOUNT_ROLE")
 		if xaRoleExists {
 			testContext.xaCfg = assumeRole(ctx, cfg, xaRole, testContext.region)
 
-			testContext.caArns["XA"] = createCertificateAuthority(ctx, testContext.xaCfg, true, "Root")
+			testContext.caArns["XA"] = createRootCertificateAuthority(ctx, testContext.xaCfg, true)
 
 			log.Printf("Created XA CA with arn %s", testContext.caArns["XA"])
 
@@ -220,7 +220,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I issue a (SHORT_VALIDITY|RSA|ECDSA|CA) certificate$`, issuerContext.issueCertificateWithKeyType)
 	ctx.Step(`^I issue a (SHORT_VALIDITY|RSA|ECDSA|CA) certificate with usage (.+)$`, issuerContext.issueCertificateWithUsage)
 
-	ctx.Step(`^the CA certificate should have path length (\d)`, issuerContext.verifyCertificateAuthority)
+	ctx.Step(`^the CA certificate should have path length (\d)$`, issuerContext.verifyCertificateAuthorityPathLen)
 	ctx.Step(`^the certificate should be issued successfully$`, issuerContext.verifyCertificateIssued)
 	ctx.Step(`^the certificate should be issued with usage (.+)$`, issuerContext.verifyCertificateUsage)
 

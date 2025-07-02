@@ -129,11 +129,10 @@ AWS Private Certificate Authority(PCA) Issuer Plugin supports the following inte
 
 ## Using AWS PCA Template ARNs
 
-When creating an AWSPCAIssuer or AWSPCAClusterIssuer, you can set the ```templateArn``` from the list of [PCA Certificate Templates](https://docs.aws.amazon.com/acm-pca/latest/userguide/UsingTemplates.html#template-varieties) under the ```spec```. When specifying an ARN, omit the part up to, and including ```:::template/```. For example, suppose you wanted to use ```arn:aws:acm-pca:::template/SubordinateCACertificate_PathLen1/V1```, then specify ```SubordinateCACertificate_PathLen1\V1``` in the issuer. See ```/config/examples/config/issuer-with-template.yaml```.
+When creating an AWSPCAIssuer or AWSPCAClusterIssuer, you can set the ```pcaTemplateName``` from the list of [PCA Certificate Templates](https://docs.aws.amazon.com/acm-pca/latest/userguide/UsingTemplates.html#template-varieties) under the ```spec```. When specifying an ARN, omit the part up to, and including ```:::template/```. For example, suppose you wanted to use ```arn:aws:acm-pca:::template/SubordinateCACertificate_PathLen1/V1```, then specify ```SubordinateCACertificate_PathLen1\V1``` in the issuer. See ```/config/examples/config/issuer-with-template.yaml```.
 
-This will lock all certificate requests made to that issuer into using the specified template. This will override other fields in your certificate requests. This is particularly useful if you wish to only allow certain namespaces to access a subset of all PCA templates.
+This will lock all certificate requests made to that issuer into using the specified template, overriding other fields in your certificate requests. This is particularly useful if you wish to only allow certain namespaces to access a subset of all PCA templates. Some of the Usages types map to templates as well. Note that if you specify a UsageType here that conflicts with the template of the issuer, the UsageType in your request will be ignored.
 
-The legacy version of using template ARNs is still valid. Note that if you specify a UsageType here that conflicts with the template of the issuer, the UsageType in your request will be ignored.
 The code for the translation can be found [here](https://github.com/cert-manager/aws-privateca-issuer/blob/main/pkg/aws/pca.go#L177).
 
 Depending on which UsageTypes are set in the Cert-Manager certificate, different AWS PCA templates will be used.

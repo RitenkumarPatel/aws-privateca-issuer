@@ -56,7 +56,7 @@ var collection = new(sync.Map)
 // GenericProvisioner abstracts over the Provisioner type for mocking purposes
 type GenericProvisioner interface {
 	Get(ctx context.Context, cr *cmapi.CertificateRequest, certArn string, log logr.Logger) ([]byte, []byte, error)
-	Sign(ctx context.Context, cr *cmapi.CertificateRequest, issuerSpec *api.AWSPCAIssuerSpec, log logr.Logger) error
+	Sign(ctx context.Context, cr *cmapi.CertificateRequest, pcaTemplateName string, log logr.Logger) error
 }
 
 // acmPCAClient abstracts over the methods used from acmpca.Client
@@ -182,7 +182,7 @@ func idempotencyToken(cr *cmapi.CertificateRequest) string {
 }
 
 // Sign takes a certificate request and signs it using PCA
-func (p *PCAProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest, issuerSpec *api.AWSPCAIssuerSpec, log logr.Logger) error {
+func (p *PCAProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest, tempArn string, log logr.Logger) error {
 	block, _ := pem.Decode(cr.Spec.Request)
 	if block == nil {
 		return fmt.Errorf("failed to decode CSR")
@@ -192,8 +192,6 @@ func (p *PCAProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest,
 	if cr.Spec.Duration != nil {
 		validityExpiration = int64(p.now().Unix()) + int64(cr.Spec.Duration.Seconds())
 	}
-
-	tempArn := templateArn(p.arn, cr.Spec, issuerSpec)
 
 	// Consider it a "retry" if we try to re-create a cert with the same name in the same namespace
 	token := idempotencyToken(cr)
@@ -278,7 +276,7 @@ func (p *PCAProvisioner) now() time.Time {
 	return time.Now()
 }
 
-func templateArn(caArn string, spec cmapi.CertificateRequestSpec, issuerSpec *api.AWSPCAIssuerSpec) string {
+func BuildTemplateArn(caArn string, spec cmapi.CertificateRequestSpec, issuerSpec *api.AWSPCAIssuerSpec) string {
 	arn := strings.SplitAfterN(caArn, ":", 3)
 	prefix := arn[0] + arn[1] + "acm-pca:::template/"
 
