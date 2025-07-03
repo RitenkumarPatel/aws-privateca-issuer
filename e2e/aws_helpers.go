@@ -29,7 +29,7 @@ type policyDocument struct {
 	Statement []statementEntry
 }
 
-type CAParams struct {
+type caParams struct {
 	signingAlgorithm types.SigningAlgorithm
 	keyAlgorithm     types.KeyAlgorithm
 	caType           types.CertificateAuthorityType
@@ -188,15 +188,7 @@ func deleteCertificateAuthority(ctx context.Context, cfg aws.Config, caArn strin
 }
 
 func createRootCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA bool) string {
-	var caParams CAParams
-
-	if isRSA {
-		caParams.signingAlgorithm = types.SigningAlgorithmSha256withrsa
-		caParams.keyAlgorithm = types.KeyAlgorithmRsa2048
-	} else {
-		caParams.signingAlgorithm = types.SigningAlgorithmSha256withecdsa
-		caParams.keyAlgorithm = types.KeyAlgorithmEcPrime256v1
-	}
+	var caParams caParams
 
 	caParams.caType = types.CertificateAuthorityTypeRoot
 	caParams.commonName = "CMTest-" + strconv.FormatInt(time.Now().Unix(), 10)
@@ -207,19 +199,11 @@ func createRootCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA b
 		Value: aws.Int64(365),
 	}
 
-	return createCertificateAuthority(ctx, cfg, caParams)
+	return createCertificateAuthority(ctx, cfg, caParams, isRSA)
 }
 
 func createSubCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA bool, parentCAArn string) string {
-	var caParams CAParams
-
-	if isRSA {
-		caParams.signingAlgorithm = types.SigningAlgorithmSha256withrsa
-		caParams.keyAlgorithm = types.KeyAlgorithmRsa2048
-	} else {
-		caParams.signingAlgorithm = types.SigningAlgorithmSha256withecdsa
-		caParams.keyAlgorithm = types.KeyAlgorithmEcPrime256v1
-	}
+	var caParams caParams
 
 	caParams.caType = types.CertificateAuthorityTypeSubordinate
 	caParams.commonName = "CMSubordinate-" + strconv.FormatInt(time.Now().Unix(), 10)
@@ -230,12 +214,19 @@ func createSubCertificateAuthority(ctx context.Context, cfg aws.Config, isRSA bo
 		Value: aws.Int64(30),
 	}
 
-	return createCertificateAuthority(ctx, cfg, caParams)
+	return createCertificateAuthority(ctx, cfg, caParams, isRSA)
 }
 
-func createCertificateAuthority(ctx context.Context, cfg aws.Config, caParams CAParams) string {
+func createCertificateAuthority(ctx context.Context, cfg aws.Config, caParams caParams, isRSA bool) string {
 	pcaClient := acmpca.NewFromConfig(cfg)
-	isRoot := caParams.caType == types.CertificateAuthorityTypeRoot
+
+	if isRSA {
+		caParams.signingAlgorithm = types.SigningAlgorithmSha256withrsa
+		caParams.keyAlgorithm = types.KeyAlgorithmRsa2048
+	} else {
+		caParams.signingAlgorithm = types.SigningAlgorithmSha256withecdsa
+		caParams.keyAlgorithm = types.KeyAlgorithmEcPrime256v1
+	}
 
 	createCertificateAuthorityParams := acmpca.CreateCertificateAuthorityInput{
 		CertificateAuthorityType: caParams.caType,
@@ -273,7 +264,7 @@ func createCertificateAuthority(ctx context.Context, cfg aws.Config, caParams CA
 		panic(csrErr.Error())
 	}
 
-	if isRoot {
+	if caParams.caType == types.CertificateAuthorityTypeRoot {
 		caParams.issuerCAArn = caArn
 	}
 
@@ -314,7 +305,7 @@ func createCertificateAuthority(ctx context.Context, cfg aws.Config, caParams CA
 	}
 
 	// For subordinate CAs, include the certificate chain
-	if !isRoot && getCertOutput.CertificateChain != nil {
+	if getCertOutput.CertificateChain != nil {
 		importCertParams.CertificateChain = []byte(*getCertOutput.CertificateChain)
 	}
 

@@ -37,7 +37,7 @@ type AWSPCAIssuerSpec struct {
 	// Needs to be specified if you want to authorize with AWS using an access and secret key
 	// +optional
 	SecretRef AWSCredentialsSecretReference `json:"secretRef,omitempty"`
-	// Specifies the template ARN of the issuer
+	// Specifies the template name of the issuer
 	// +optional
 	TemplateArn string `json:"templateArn,omitempty"`
 }

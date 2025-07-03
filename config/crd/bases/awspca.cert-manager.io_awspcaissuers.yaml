@@ -110,7 +110,7 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               templateArn:
-                description: Specifies the template ARN of the issuer
+                description: Specifies the template name of the issuer
                 type: string
             type: object
           status:
