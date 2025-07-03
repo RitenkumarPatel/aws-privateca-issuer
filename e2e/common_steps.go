@@ -6,41 +6,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cert-manager/aws-privateca-issuer/pkg/api/v1beta1"
 	cmv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	util "github.com/cert-manager/cert-manager/pkg/api/util"
-
-	"crypto/x509"
-	"encoding/pem"
-	"slices"
-
-	"github.com/cert-manager/aws-privateca-issuer/pkg/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type CertificateConfig struct {
 	CertType string
-	Usages   []cmv1.KeyUsage // optional, will be nil if not provided
+	Usages   []cmv1.KeyUsage
 }
-
-const secretSuffix = "-cert-secret"
-
-var usageMap = map[string]cmv1.KeyUsage{
-	"client_auth":       cmv1.UsageClientAuth,
-	"server_auth":       cmv1.UsageServerAuth,
-	"digital_signature": cmv1.UsageDigitalSignature,
-	"code_signing":      cmv1.UsageCodeSigning,
-	"ocsp_signing":      cmv1.UsageOCSPSigning,
-	"any":               cmv1.UsageAny,
-	"email protection":  cmv1.UsageEmailProtection,
-	"ipsec user":        cmv1.UsageIPsecUser,
-	"ipsec tunnel":      cmv1.UsageIPsecTunnel,
-}
-
 
 func getCaArn(caType string) string {
 	caArn, exists := testContext.caArns[caType]
@@ -121,7 +100,7 @@ func getBaseCertSpec(certConfig CertificateConfig) cmv1.CertificateSpec {
 	sanitizedCertType := strings.Replace(strings.ToLower(certConfig.CertType), "_", "-", -1)
 
 	if len(certConfig.Usages) == 0 {
-		certConfig.Usages = []cmv1.KeyUsage{cmv1.UsageAny}
+		certConfig.Usages = []cmv1.KeyUsage{cmv1.UsageDigitalSignature, cmv1.UsageKeyEncipherment} // These are cert-manager's defaults
 	}
 
 	certSpec := cmv1.CertificateSpec{
@@ -205,7 +184,7 @@ func (issCtx *IssuerContext) issueCertificate(ctx context.Context, certConfig Ce
 	issCtx.certName = issCtx.issuerName + "-" + sanitizedCertType + "-cert"
 	certSpec := getCertSpec(certConfig)
 
-	secretName := issCtx.certName + secretSuffix
+	secretName := issCtx.certName + "-cert-secret"
 	certSpec.SecretName = secretName
 	certSpec.IssuerRef = cmmeta.ObjectReference{
 		Kind:  issCtx.issuerType,
@@ -222,83 +201,6 @@ func (issCtx *IssuerContext) issueCertificate(ctx context.Context, certConfig Ce
 
 	if err != nil {
 		assert.FailNow(godog.T(ctx), "Could not create certificate: "+err.Error())
-	}
-
-	return nil
-}
-
-func parseUsages(usageStr string) []cmv1.KeyUsage {
-	parts := strings.Split(usageStr, ",")
-	var usages []cmv1.KeyUsage
-	for _, part := range parts {
-		if usage, exists := usageMap[strings.ToLower(part)]; exists {
-			usages = append(usages, usage) 
-		} else {
-			usages = append(usages, cmv1.KeyUsage(part)) 
-		}
-	}
-
-	return usages
-}
-
-func (issCtx *IssuerContext) verifyCertificateIssued(ctx context.Context) error {
-	return issCtx.verifyCertificateState(ctx, "Ready", "True")
-}
-
-func (issCtx *IssuerContext) verifyCertificateState(ctx context.Context, reason string, status string) error {
-	err := waitForCertificateState(ctx, testContext.cmClient, issCtx.certName, issCtx.namespace, reason, status)
-
-	if err != nil {
-		assert.FailNow(godog.T(ctx), "Certificate did not reach specified state, Reason = "+reason+", Status = "+status+": "+err.Error())
-	}
-
-	return nil
-}
-
-func (issCtx *IssuerContext) verifyCertificateRequestState(ctx context.Context, reason string, status string) error {
-	certificateRequestName := fmt.Sprintf("%s-%d", issCtx.certName, 1)
-	waitForCertificateRequestToBeCreated(ctx, testContext.cmClient, certificateRequestName, issCtx.namespace)
-	err := waitForCertificateRequestState(ctx, testContext.cmClient, certificateRequestName, issCtx.namespace, reason, status)
-
-	if err != nil {
-		assert.FailNow(godog.T(ctx), "Certificate Request did not reach specified state, Condition = "+reason+", Status = "+status+": "+err.Error())
-	}
-
-	return nil
-}
-
-func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage string) error {
-	secretName := issCtx.certName + secretSuffix
-
-	certBytes, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
-	if err != nil {
-		assert.FailNow(godog.T(ctx), "Failed to get certificate data: "+err.Error())
-	}
-
-	if len(certBytes) == 0 {
-		assert.FailNow(godog.T(ctx), "Certificate data is empty")
-	}
-
-	decodedData, _ := pem.Decode(certBytes)
-	if decodedData == nil {
-		assert.FailNow(godog.T(ctx), "Failed to decode certificate data")
-	}
-
-	cert, err := x509.ParseCertificate(decodedData.Bytes)
-	if err != nil {
-		assert.FailNow(godog.T(ctx), "Failed to parse certificate: "+err.Error())
-	}
-
-	for _, expectedUsage := range strings.Split(usage, ",") {
-		mappedUsage, exists := usageMap[expectedUsage]
-		if !exists {
-			assert.FailNow(godog.T(ctx), "Expected usage %q not found in usageMap.", expectedUsage)
-		}
-		
-		x509Usage, _ := util.ExtKeyUsageType(mappedUsage)
-		if !slices.Contains(cert.ExtKeyUsage, x509Usage) {
-			assert.FailNow(godog.T(ctx), fmt.Sprintf("Certificate usage mismatch. Found: %v, Expected: %v", cert.ExtKeyUsage, mappedUsage))
-		}
 	}
 
 	return nil

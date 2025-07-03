@@ -13,11 +13,22 @@ import (
 )
 
 func (issCtx *IssuerContext) createNamespaceIssuer(ctx context.Context, caType string) error {
+	return issCtx.createNamespaceIssuerInternal(ctx, caType, "")
+}
+
+func (issCtx *IssuerContext) createNamespaceIssuerWithTemplate(ctx context.Context, templateArn string, caType string) error {
+	return issCtx.createNamespaceIssuerInternal(ctx, caType, templateArn)
+}
+
+func (issCtx *IssuerContext) createNamespaceIssuerInternal(ctx context.Context, caType string, templateArn string) error {
 	issCtx.issuerName = uuid.New().String() + "--namespace-issuer--" + strings.ToLower(caType)
 	issCtx.issuerType = "AWSPCAIssuer"
 	issSpec := v1beta1.AWSPCAIssuer{
 		ObjectMeta: metav1.ObjectMeta{Name: issCtx.issuerName},
 		Spec:       getIssuerSpec(caType),
+	}
+	if templateArn != "" {
+		issSpec.Spec.TemplateArn = templateArn
 	}
 
 	if issCtx.secretRef != (v1beta1.AWSCredentialsSecretReference{}) {
