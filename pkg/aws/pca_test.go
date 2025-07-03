@@ -263,96 +263,56 @@ func TestPCATemplateArn(t *testing.T) {
 	type testCase struct {
 		expectedSuffix  string
 		certificateSpec cmapi.CertificateRequestSpec
+		issuerSpec      *issuerapi.AWSPCAIssuerSpec
 	}
+
+	createTestCase := func(suffix string, usages []cmapi.KeyUsage, isCA bool, pcaTemplateName string) testCase {
+		tc := testCase{
+			expectedSuffix: ":acm-pca:::template/" + suffix,
+			certificateSpec: cmapi.CertificateRequestSpec{
+				Usages: usages,
+				IsCA:   isCA,
+			},
+		}
+		if pcaTemplateName != "" {
+			tc.issuerSpec = &issuerapi.AWSPCAIssuerSpec{TemplateArn: pcaTemplateName}
+		}
+		return tc
+	}
+
 	tests := map[string]testCase{
-		"client": {
-			expectedSuffix: ":acm-pca:::template/EndEntityClientAuthCertificate/V1",
-			certificateSpec: cmapi.CertificateRequestSpec{
-				Usages: []cmapi.KeyUsage{
-					cmapi.UsageClientAuth,
-				},
-			},
-		},
-		"server": {
-			expectedSuffix: ":acm-pca:::template/EndEntityServerAuthCertificate/V1",
-			certificateSpec: cmapi.CertificateRequestSpec{
-				Usages: []cmapi.KeyUsage{
-					cmapi.UsageServerAuth,
-				},
-			},
-		},
-		"client server": {
-			expectedSuffix: ":acm-pca:::template/EndEntityCertificate/V1",
-			certificateSpec: cmapi.CertificateRequestSpec{
-				Usages: []cmapi.KeyUsage{
-					cmapi.UsageClientAuth,
-					cmapi.UsageServerAuth,
-				},
-			},
-		},
-		"server client": {
-			expectedSuffix: ":acm-pca:::template/EndEntityCertificate/V1",
-			certificateSpec: cmapi.CertificateRequestSpec{
-				Usages: []cmapi.KeyUsage{
-					cmapi.UsageServerAuth,
-					cmapi.UsageClientAuth,
-				},
-			},
-		},
-		"code signing": {
-			expectedSuffix: ":acm-pca:::template/CodeSigningCertificate/V1",
-			certificateSpec: cmapi.CertificateRequestSpec{
-				Usages: []cmapi.KeyUsage{
-					cmapi.UsageCodeSigning,
-				},
-			},
-		},
-		"ocsp signing": {
-			expectedSuffix: ":acm-pca:::template/OCSPSigningCertificate/V1",
-			certificateSpec: cmapi.CertificateRequestSpec{
-				Usages: []cmapi.KeyUsage{
-					cmapi.UsageOCSPSigning,
-				},
-			},
-		},
-		"other": {
-			expectedSuffix: ":acm-pca:::template/BlankEndEntityCertificate_APICSRPassthrough/V1",
-			certificateSpec: cmapi.CertificateRequestSpec{
-				Usages: []cmapi.KeyUsage{
-					cmapi.UsageTimestamping,
-				},
-			},
-		},
-		"isCA default": {
-			expectedSuffix: ":acm-pca:::template/SubordinateCACertificate_PathLen0/V1",
-			certificateSpec: cmapi.CertificateRequestSpec{
-				IsCA: true,
-			},
-		},
+		"client":              createTestCase("EndEntityClientAuthCertificate/V1", []cmapi.KeyUsage{cmapi.UsageClientAuth}, false, ""),
+		"client issuer":       createTestCase("EndEntityClientAuthCertificate/V1", []cmapi.KeyUsage{cmapi.UsageServerAuth}, false, "EndEntityClientAuthCertificate/V1"),
+		"server":              createTestCase("EndEntityServerAuthCertificate/V1", []cmapi.KeyUsage{cmapi.UsageServerAuth}, false, ""),
+		"server issuer":       createTestCase("EndEntityServerAuthCertificate/V1", nil, false, "EndEntityServerAuthCertificate/V1"),
+		"client server":       createTestCase("EndEntityCertificate/V1", []cmapi.KeyUsage{cmapi.UsageClientAuth, cmapi.UsageServerAuth}, false, ""),
+		"server client":       createTestCase("EndEntityCertificate/V1", []cmapi.KeyUsage{cmapi.UsageServerAuth, cmapi.UsageClientAuth}, false, ""),
+		"code signing":        createTestCase("CodeSigningCertificate/V1", []cmapi.KeyUsage{cmapi.UsageCodeSigning}, false, ""),
+		"code signing issuer": createTestCase("EndEntityClientAuthCertificate/V1", nil, false, "EndEntityClientAuthCertificate/V1"),
+		"ocsp signing":        createTestCase("OCSPSigningCertificate/V1", []cmapi.KeyUsage{cmapi.UsageOCSPSigning}, false, ""),
+		"ocsp signing issuer": createTestCase("OCSPSigningCertificate/V1", nil, false, "OCSPSigningCertificate/V1"),
+		"other":               createTestCase("BlankEndEntityCertificate_APICSRPassthrough/V1", []cmapi.KeyUsage{cmapi.UsageTimestamping}, false, ""),
+		"isCA default":        createTestCase("SubordinateCACertificate_PathLen0/V1", nil, true, ""),
+		"isCA issuer":         createTestCase("SubordinateCACertificate_PathLen1/V1", nil, true, "SubordinateCACertificate_PathLen1/V1"),
 	}
+
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			spec := tc.certificateSpec
-
-			response := templateArn(arn, spec)
+			response := BuildTemplateArn(arn, tc.certificateSpec, tc.issuerSpec)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:aws:"), "returns expected ARN prefix")
 		})
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			spec := tc.certificateSpec
-
-			response := templateArn(govArn, spec)
+			response := BuildTemplateArn(govArn, tc.certificateSpec, tc.issuerSpec)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "us-gov returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:aws-us-gov:"), "us-gov returns expected ARN prefix")
 		})
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			spec := tc.certificateSpec
-
-			response := templateArn(fakeArn, spec)
+			response := BuildTemplateArn(fakeArn, tc.certificateSpec, tc.issuerSpec)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "fake arn returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:fake:"), "fake arn returns expected ARN prefix")
 		})
@@ -804,7 +764,7 @@ func TestPCASign(t *testing.T) {
 				},
 			}
 
-			err := tc.provisioner.Sign(context.TODO(), cr, logr.Discard())
+			err := tc.provisioner.Sign(context.TODO(), cr, "", logr.Discard())
 
 			if tc.expectFailure && err == nil {
 				fmt.Print(err.Error())
@@ -867,7 +827,7 @@ func TestPCASignValidity(t *testing.T) {
 				},
 			}
 
-			_ = provisioner.Sign(context.TODO(), cr, logr.Discard())
+			_ = provisioner.Sign(context.TODO(), cr, "", logr.Discard())
 			got := client.issueCertInput
 			if got == nil {
 				assert.Fail(t, "Expected certificate input, got none")
