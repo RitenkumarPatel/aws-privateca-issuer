@@ -182,7 +182,7 @@ func idempotencyToken(cr *cmapi.CertificateRequest) string {
 }
 
 // Sign takes a certificate request and signs it using PCA
-func (p *PCAProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest, tempArn string, log logr.Logger) error {
+func (p *PCAProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest, pcaTemplateName string, log logr.Logger) error {
 	block, _ := pem.Decode(cr.Spec.Request)
 	if block == nil {
 		return fmt.Errorf("failed to decode CSR")
@@ -201,10 +201,12 @@ func (p *PCAProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest,
 		return err
 	}
 
+	pcaTemplateArn := buildTemplateArn(p.arn, cr.Spec, pcaTemplateName)
+
 	issueParams := acmpca.IssueCertificateInput{
 		CertificateAuthorityArn: aws.String(p.arn),
 		SigningAlgorithm:        *p.signingAlgorithm,
-		TemplateArn:             aws.String(tempArn),
+		TemplateArn:             aws.String(pcaTemplateArn),
 		Csr:                     cr.Spec.Request,
 		Validity: &acmpcatypes.Validity{
 			Type:  acmpcatypes.ValidityPeriodTypeAbsolute,
@@ -276,12 +278,12 @@ func (p *PCAProvisioner) now() time.Time {
 	return time.Now()
 }
 
-func BuildTemplateArn(caArn string, spec cmapi.CertificateRequestSpec, issuerSpec *api.AWSPCAIssuerSpec) string {
+func buildTemplateArn(caArn string, spec cmapi.CertificateRequestSpec, templateName string) string {
 	arn := strings.SplitAfterN(caArn, ":", 3)
 	prefix := arn[0] + arn[1] + "acm-pca:::template/"
 
-	if issuerSpec != nil && issuerSpec.TemplateArn != "" {
-		return prefix + issuerSpec.TemplateArn
+	if templateName != "" {
+		return prefix + templateName
 	}
 
 	if spec.IsCA {

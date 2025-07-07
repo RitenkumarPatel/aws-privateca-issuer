@@ -163,6 +163,12 @@ type errorACMPCAClient struct {
 	acmPCAClient
 }
 
+type testCase struct {
+	expectedSuffix  string
+	certificateSpec cmapi.CertificateRequestSpec
+	issuerSpec      *issuerapi.AWSPCAIssuerSpec
+}
+
 func (m *errorACMPCAClient) DescribeCertificateAuthority(_ context.Context, input *acmpca.DescribeCertificateAuthorityInput, _ ...func(*acmpca.Options)) (*acmpca.DescribeCertificateAuthorityOutput, error) {
 	return &acmpca.DescribeCertificateAuthorityOutput{
 		CertificateAuthority: &acmpcatypes.CertificateAuthority{
@@ -253,32 +259,26 @@ func TestProvisonerOperation(t *testing.T) {
 	assert.Equal(t, err, nil)
 }
 
+func createTestCase(suffix string, usages []cmapi.KeyUsage, isCA bool, pcaTemplateName string) testCase {
+	tc := testCase{
+		expectedSuffix: ":acm-pca:::template/" + suffix,
+		certificateSpec: cmapi.CertificateRequestSpec{
+			Usages: usages,
+			IsCA:   isCA,
+		},
+	}
+	if pcaTemplateName != "" {
+		tc.issuerSpec = &issuerapi.AWSPCAIssuerSpec{PCATemplateName: pcaTemplateName}
+	}
+	return tc
+}
+
 func TestPCATemplateArn(t *testing.T) {
 	var (
 		arn     = "arn:aws:acm-pca:us-east-1:account:certificate-authority/12345678-1234-1234-1234-123456789012"
 		govArn  = "arn:aws-us-gov:acm-pca:us-east-1:account:certificate-authority/12345678-1234-1234-1234-123456789012"
 		fakeArn = "arn:fake:acm-pca:us-east-1:account:certificate-authority/12345678-1234-1234-1234-123456789012"
 	)
-
-	type testCase struct {
-		expectedSuffix  string
-		certificateSpec cmapi.CertificateRequestSpec
-		issuerSpec      *issuerapi.AWSPCAIssuerSpec
-	}
-
-	createTestCase := func(suffix string, usages []cmapi.KeyUsage, isCA bool, pcaTemplateName string) testCase {
-		tc := testCase{
-			expectedSuffix: ":acm-pca:::template/" + suffix,
-			certificateSpec: cmapi.CertificateRequestSpec{
-				Usages: usages,
-				IsCA:   isCA,
-			},
-		}
-		if pcaTemplateName != "" {
-			tc.issuerSpec = &issuerapi.AWSPCAIssuerSpec{TemplateArn: pcaTemplateName}
-		}
-		return tc
-	}
 
 	tests := map[string]testCase{
 		"client":              createTestCase("EndEntityClientAuthCertificate/V1", []cmapi.KeyUsage{cmapi.UsageClientAuth}, false, ""),
@@ -297,22 +297,25 @@ func TestPCATemplateArn(t *testing.T) {
 	}
 
 	for name, tc := range tests {
+		var templateName string
+		if tc.issuerSpec != nil {
+			templateName = tc.issuerSpec.PCATemplateName
+		}
+
 		t.Run(name, func(t *testing.T) {
-			response := BuildTemplateArn(arn, tc.certificateSpec, tc.issuerSpec)
+			response := buildTemplateArn(arn, tc.certificateSpec, templateName)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:aws:"), "returns expected ARN prefix")
 		})
-	}
-	for name, tc := range tests {
+
 		t.Run(name, func(t *testing.T) {
-			response := BuildTemplateArn(govArn, tc.certificateSpec, tc.issuerSpec)
+			response := buildTemplateArn(govArn, tc.certificateSpec, templateName)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "us-gov returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:aws-us-gov:"), "us-gov returns expected ARN prefix")
 		})
-	}
-	for name, tc := range tests {
+
 		t.Run(name, func(t *testing.T) {
-			response := BuildTemplateArn(fakeArn, tc.certificateSpec, tc.issuerSpec)
+			response := buildTemplateArn(fakeArn, tc.certificateSpec, templateName)
 			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "fake arn returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:fake:"), "fake arn returns expected ARN prefix")
 		})
