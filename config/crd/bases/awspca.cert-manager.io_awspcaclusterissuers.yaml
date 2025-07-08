@@ -46,7 +46,7 @@ spec:
               pcaTemplateName:
                 description: Specifies the template name associated with the issuer,
                   all requests made to this issuer will use this template. If not
-                  specified, the issuer will follow the fields on the certificate
+                  specified, the issuer will use the usageTypes on the certificate
                   resource.
                 type: string
               region:

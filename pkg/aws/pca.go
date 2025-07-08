@@ -280,7 +280,8 @@ func (p *PCAProvisioner) now() time.Time {
 
 func buildTemplateArn(caArn string, spec cmapi.CertificateRequestSpec, templateName string) string {
 	arn := strings.SplitAfterN(caArn, ":", 3)
-	prefix := arn[0] + arn[1] + "acm-pca:::template/"
+	arnPrefix, partition := arn[0], arn[1]
+	prefix := arnPrefix + partition + "acm-pca:::template/"
 
 	if templateName != "" {
 		return prefix + templateName
