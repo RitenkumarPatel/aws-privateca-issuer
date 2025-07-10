@@ -43,6 +43,12 @@ spec:
               arn:
                 description: Specifies the ARN of the PCA resource
                 type: string
+              pcaTemplateName:
+                description: Specifies the template name associated with the issuer,
+                  all requests made to this issuer will use this template. If not
+                  specified, the issuer will use the usageTypes on the certificate
+                  resource.
+                type: string
               region:
                 description: Should contain the AWS region if it cannot be inferred
                 type: string

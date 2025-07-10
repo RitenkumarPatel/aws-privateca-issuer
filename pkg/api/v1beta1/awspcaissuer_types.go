@@ -37,6 +37,9 @@ type AWSPCAIssuerSpec struct {
 	// Needs to be specified if you want to authorize with AWS using an access and secret key
 	// +optional
 	SecretRef AWSCredentialsSecretReference `json:"secretRef,omitempty"`
+	// Specifies the template name associated with the issuer, all requests made to this issuer will use this template. If not specified, the issuer will use the usageTypes on the certificate resource.
+	// +optional
+	PCATemplateName string `json:"pcaTemplateName,omitempty"`
 }
 
 // AWSCredentialsSecretReference defines the secret used by the issuer
