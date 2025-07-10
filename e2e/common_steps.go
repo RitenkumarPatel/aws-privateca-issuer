@@ -6,15 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"crypto/x509"
+	"encoding/pem"
 	util "github.com/cert-manager/cert-manager/pkg/api/util"
 	cmv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-
-	"crypto/x509"
-	"encoding/pem"
 	"slices"
 
 	"github.com/cert-manager/aws-privateca-issuer/pkg/api/v1beta1"

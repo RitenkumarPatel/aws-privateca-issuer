@@ -45,15 +45,16 @@ import (
 )
 
 type fakeProvisioner struct {
-	cert    []byte
-	caCert  []byte
-	getErr  error
-	signErr error
+	cert            []byte
+	caCert          []byte
+	getErr          error
+	signErr         error
 	pcaTemplateName string
 }
 
 func (p *fakeProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest, pcaTemplateName string, log logr.Logger) error {
 	p.pcaTemplateName = pcaTemplateName
+	log.Info("SETTING TEMPLATE NAME TO " + pcaTemplateName)
 	metav1.SetMetaDataAnnotation(&cr.ObjectMeta, "aws-privateca-issuer/certificate-arn", "arn")
 	return p.signErr
 }
@@ -79,8 +80,9 @@ func TestCertificateRequestReconcile(t *testing.T) {
 		expectedReadyConditionReason string
 		expectedCertificate          []byte
 		expectedCACertificate        []byte
-		expectedTemplate			 string
+		expectedTemplate             string
 		mockProvisioner              func(context.Context, client.Client, types.NamespacedName, *issuerapi.AWSPCAIssuerSpec) (awspca.GenericProvisioner, error)
+		fakeProvisioner              *fakeProvisioner
 	}
 	tests := map[string]testCase{
 		"success-issuer": {
@@ -171,8 +173,8 @@ func TestCertificateRequestReconcile(t *testing.T) {
 								Namespace: "ns1",
 							},
 						},
-						Region: "us-east-1",
-						Arn:    "arn:aws:acm-pca:us-east-1:account:certificate-authority/12345678-1234-1234-1234-123456789012",
+						Region:          "us-east-1",
+						Arn:             "arn:aws:acm-pca:us-east-1:account:certificate-authority/12345678-1234-1234-1234-123456789012",
 						PCATemplateName: "EndEntityServerAuthCertificate/V1",
 					},
 					Status: issuerapi.AWSPCAIssuerStatus{
@@ -202,14 +204,16 @@ func TestCertificateRequestReconcile(t *testing.T) {
 			expectedError:                false,
 			expectedCertificate:          []byte("cert"),
 			expectedCACertificate:        []byte("cacert"),
-			expectedTemplate: 			  "EndEntityServerAuthCertificate/V1",	
-			mockProvisioner:              generateMockGetProvisioner(&fakeProvisioner{caCert: []byte("cacert"), cert: []byte("cert")}, nil),
+			expectedTemplate:             "EndEntityServerAuthCertificate/V1",
+			mockProvisioner:              nil, // will be set later
+			fakeProvisioner:              nil, // will be set later
 		},
 		"success-cluster-issuer": {
-			name: types.NamespacedName{Name: "cr1"},
+			name: types.NamespacedName{Namespace: "ns1", Name: "cr1"},
 			objects: []client.Object{
 				cmgen.CertificateRequest(
 					"cr1",
+					cmgen.SetCertificateRequestNamespace("ns1"),
 					cmgen.SetCertificateRequestIssuer(cmmeta.ObjectReference{
 						Name:  "clusterissuer1",
 						Group: issuerapi.GroupVersion.Group,
@@ -252,6 +256,8 @@ func TestCertificateRequestReconcile(t *testing.T) {
 					},
 				},
 			},
+			expectedSignResult:           ctrl.Result{Requeue: true},
+			expectedGetResult:            ctrl.Result{},
 			expectedReadyConditionStatus: cmmeta.ConditionTrue,
 			expectedReadyConditionReason: cmapi.CertificateRequestReasonIssued,
 			expectedError:                false,
@@ -260,10 +266,11 @@ func TestCertificateRequestReconcile(t *testing.T) {
 			mockProvisioner:              generateMockGetProvisioner(&fakeProvisioner{caCert: []byte("cacert"), cert: []byte("cert")}, nil),
 		},
 		"success-cluster-issuer-templated": {
-			name: types.NamespacedName{Name: "cr1"},
+			name: types.NamespacedName{Namespace: "ns1", Name: "cr1"},
 			objects: []client.Object{
 				cmgen.CertificateRequest(
 					"cr1",
+					cmgen.SetCertificateRequestNamespace("ns1"),
 					cmgen.SetCertificateRequestIssuer(cmmeta.ObjectReference{
 						Name:  "clusterissuer1",
 						Group: issuerapi.GroupVersion.Group,
@@ -284,8 +291,8 @@ func TestCertificateRequestReconcile(t *testing.T) {
 								Name: "clusterissuer1-credentials",
 							},
 						},
-						Region: "us-east-1",
-						Arn:    "arn:aws:acm-pca:us-east-1:account:certificate-authority/12345678-1234-1234-1234-123456789012",
+						Region:          "us-east-1",
+						Arn:             "arn:aws:acm-pca:us-east-1:account:certificate-authority/12345678-1234-1234-1234-123456789012",
 						PCATemplateName: "EndEntityClientAuthCertificate/V1",
 					},
 					Status: issuerapi.AWSPCAIssuerStatus{
@@ -299,7 +306,8 @@ func TestCertificateRequestReconcile(t *testing.T) {
 				},
 				&v1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: "clusterissuer1-credentials",
+						Name:      "clusterissuer1-credentials",
+						Namespace: "ns1",
 					},
 					Data: map[string][]byte{
 						"AWS_ACCESS_KEY_ID":     []byte("ZXhhbXBsZQ=="),
@@ -307,13 +315,16 @@ func TestCertificateRequestReconcile(t *testing.T) {
 					},
 				},
 			},
+			expectedSignResult:           ctrl.Result{Requeue: true},
+			expectedGetResult:            ctrl.Result{},
 			expectedReadyConditionStatus: cmmeta.ConditionTrue,
 			expectedReadyConditionReason: cmapi.CertificateRequestReasonIssued,
 			expectedError:                false,
 			expectedCertificate:          []byte("cert"),
 			expectedCACertificate:        []byte("cacert"),
-			expectedTemplate: 			  "EndEntityClientAuthCertificate/V1",	
-			mockProvisioner:              generateMockGetProvisioner(&fakeProvisioner{caCert: []byte("cacert"), cert: []byte("cert")}, nil),
+			expectedTemplate:             "EndEntityClientAuthCertificate/V1",
+			mockProvisioner:              nil, // will be set later
+			fakeProvisioner:              nil, // will be set later
 		},
 		"success-certificate-already-issued": {
 			name: types.NamespacedName{Name: "cr1"},
@@ -697,11 +708,25 @@ func TestCertificateRequestReconcile(t *testing.T) {
 
 			ctx := context.TODO()
 
+			if tc.mockProvisioner != nil {
+				GetProvisioner = tc.mockProvisioner
+			}
+
+			if tc.expectedTemplate != "" {
+				fakeProvisioner := &fakeProvisioner{caCert: []byte("cacert"), cert: []byte("cert")}
+				GetProvisioner = generateMockGetProvisioner(fakeProvisioner, nil)
+				tc.fakeProvisioner = fakeProvisioner
+			}
+
 			result, signErr := controller.Reconcile(ctx, reconcile.Request{NamespacedName: tc.name})
 			assert.Equal(t, tc.expectedSignResult, result, "Unexpected sign result")
 
 			result, getErr := controller.Reconcile(ctx, reconcile.Request{NamespacedName: tc.name})
 			assert.Equal(t, tc.expectedGetResult, result, "Unexpected get result")
+
+			if tc.expectedTemplate != "" {
+				assert.Equal(t, tc.expectedTemplate, tc.fakeProvisioner.pcaTemplateName, "Mismatched template names")
+			}
 
 			if tc.expectedError && (signErr == nil && getErr == nil) {
 				assert.Fail(t, "Expected an error but got none")
@@ -720,7 +745,7 @@ func TestCertificateRequestReconcile(t *testing.T) {
 				if tc.expectedCACertificate != nil {
 					assert.Equal(t, tc.expectedCACertificate, cr.Status.CA)
 				}
-				
+
 			}
 			awspca.ClearProvisioners()
 		})
