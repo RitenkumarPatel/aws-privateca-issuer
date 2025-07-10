@@ -79,7 +79,7 @@ func TestCertificateRequestReconcile(t *testing.T) {
 		expectedReadyConditionReason string
 		expectedCertificate          []byte
 		expectedCACertificate        []byte
-		expectedTemplate			 string
+		expectedTemplate	 		 string
 		mockProvisioner              func(context.Context, client.Client, types.NamespacedName, *issuerapi.AWSPCAIssuerSpec) (awspca.GenericProvisioner, error)
 	}
 	tests := map[string]testCase{
@@ -697,6 +697,10 @@ func TestCertificateRequestReconcile(t *testing.T) {
 
 			ctx := context.TODO()
 
+			if tc.mockProvisioner != nil {
+				GetProvisioner = tc.mockProvisioner
+			}
+
 			result, signErr := controller.Reconcile(ctx, reconcile.Request{NamespacedName: tc.name})
 			assert.Equal(t, tc.expectedSignResult, result, "Unexpected sign result")
 
@@ -722,6 +726,7 @@ func TestCertificateRequestReconcile(t *testing.T) {
 				}
 				
 			}
+			
 			awspca.ClearProvisioners()
 		})
 	}
