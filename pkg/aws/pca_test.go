@@ -164,9 +164,9 @@ type errorACMPCAClient struct {
 }
 
 type pcaTemplateTestCase struct {
-	expectedSuffix  string
-	certificateSpec cmapi.CertificateRequestSpec
-	templateName    string
+	expectedTemplateArn string
+	certificateSpec     cmapi.CertificateRequestSpec
+	templateName        string
 }
 
 func (m *errorACMPCAClient) DescribeCertificateAuthority(_ context.Context, input *acmpca.DescribeCertificateAuthorityInput, _ ...func(*acmpca.Options)) (*acmpca.DescribeCertificateAuthorityOutput, error) {
@@ -259,9 +259,9 @@ func TestProvisonerOperation(t *testing.T) {
 	assert.Equal(t, err, nil)
 }
 
-func createPCATemplateTestCase(suffix string, usages []cmapi.KeyUsage, isCA bool, pcaTemplateName string) pcaTemplateTestCase {
+func createPCATemplateTestCase(expectedTemplateName string, usages []cmapi.KeyUsage, isCA bool, pcaTemplateName string) pcaTemplateTestCase {
 	tc := pcaTemplateTestCase{
-		expectedSuffix: ":acm-pca:::template/" + suffix,
+		expectedTemplateArn: ":acm-pca:::template/" + expectedTemplateName,
 		certificateSpec: cmapi.CertificateRequestSpec{
 			Usages: usages,
 			IsCA:   isCA,
@@ -300,19 +300,19 @@ func TestPCATemplateArn(t *testing.T) {
 		templateName := tc.templateName
 		t.Run(name, func(t *testing.T) {
 			response := buildTemplateArn(arn, certificateSpec, templateName)
-			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "returns expected template")
+			assert.True(t, strings.HasSuffix(response, tc.expectedTemplateArn), "returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:aws:"), "returns expected ARN prefix")
 		})
 
 		t.Run(name, func(t *testing.T) {
 			response := buildTemplateArn(govArn, certificateSpec, templateName)
-			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "us-gov returns expected template")
+			assert.True(t, strings.HasSuffix(response, tc.expectedTemplateArn), "us-gov returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:aws-us-gov:"), "us-gov returns expected ARN prefix")
 		})
 
 		t.Run(name, func(t *testing.T) {
 			response := buildTemplateArn(fakeArn, certificateSpec, templateName)
-			assert.True(t, strings.HasSuffix(response, tc.expectedSuffix), "fake arn returns expected template")
+			assert.True(t, strings.HasSuffix(response, tc.expectedTemplateArn), "fake arn returns expected template")
 			assert.True(t, strings.HasPrefix(response, "arn:fake:"), "fake arn returns expected ARN prefix")
 		})
 	}

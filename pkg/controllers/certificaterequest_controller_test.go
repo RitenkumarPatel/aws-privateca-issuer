@@ -54,7 +54,6 @@ type fakeProvisioner struct {
 
 func (p *fakeProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest, pcaTemplateName string, log logr.Logger) error {
 	p.pcaTemplateName = pcaTemplateName
-	log.Info("SETTING TEMPLATE NAME TO " + pcaTemplateName)
 	metav1.SetMetaDataAnnotation(&cr.ObjectMeta, "aws-privateca-issuer/certificate-arn", "arn")
 	return p.signErr
 }
@@ -82,7 +81,6 @@ func TestCertificateRequestReconcile(t *testing.T) {
 		expectedCACertificate        []byte
 		expectedTemplate             string
 		mockProvisioner              func(context.Context, client.Client, types.NamespacedName, *issuerapi.AWSPCAIssuerSpec) (awspca.GenericProvisioner, error)
-		fakeProvisioner              *fakeProvisioner
 	}
 	tests := map[string]testCase{
 		"success-issuer": {
@@ -205,8 +203,6 @@ func TestCertificateRequestReconcile(t *testing.T) {
 			expectedCertificate:          []byte("cert"),
 			expectedCACertificate:        []byte("cacert"),
 			expectedTemplate:             "EndEntityServerAuthCertificate/V1",
-			mockProvisioner:              nil, // will be set later
-			fakeProvisioner:              nil, // will be set later
 		},
 		"success-cluster-issuer": {
 			name: types.NamespacedName{Namespace: "ns1", Name: "cr1"},
@@ -323,8 +319,6 @@ func TestCertificateRequestReconcile(t *testing.T) {
 			expectedCertificate:          []byte("cert"),
 			expectedCACertificate:        []byte("cacert"),
 			expectedTemplate:             "EndEntityClientAuthCertificate/V1",
-			mockProvisioner:              nil, // will be set later
-			fakeProvisioner:              nil, // will be set later
 		},
 		"success-certificate-already-issued": {
 			name: types.NamespacedName{Name: "cr1"},
@@ -712,10 +706,10 @@ func TestCertificateRequestReconcile(t *testing.T) {
 				GetProvisioner = tc.mockProvisioner
 			}
 
+			var templateTestProvisioner *fakeProvisioner
 			if tc.expectedTemplate != "" {
-				fakeProvisioner := &fakeProvisioner{caCert: []byte("cacert"), cert: []byte("cert")}
-				GetProvisioner = generateMockGetProvisioner(fakeProvisioner, nil)
-				tc.fakeProvisioner = fakeProvisioner
+				templateTestProvisioner = &fakeProvisioner{caCert: []byte("cacert"), cert: []byte("cert")}
+				GetProvisioner = generateMockGetProvisioner(templateTestProvisioner, nil)
 			}
 
 			result, signErr := controller.Reconcile(ctx, reconcile.Request{NamespacedName: tc.name})
@@ -725,7 +719,7 @@ func TestCertificateRequestReconcile(t *testing.T) {
 			assert.Equal(t, tc.expectedGetResult, result, "Unexpected get result")
 
 			if tc.expectedTemplate != "" {
-				assert.Equal(t, tc.expectedTemplate, tc.fakeProvisioner.pcaTemplateName, "Mismatched template names")
+				assert.Equal(t, tc.expectedTemplate, templateTestProvisioner.pcaTemplateName)
 			}
 
 			if tc.expectedError && (signErr == nil && getErr == nil) {
