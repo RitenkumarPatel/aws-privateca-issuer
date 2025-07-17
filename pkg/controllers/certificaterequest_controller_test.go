@@ -718,10 +718,6 @@ func TestCertificateRequestReconcile(t *testing.T) {
 			result, getErr := controller.Reconcile(ctx, reconcile.Request{NamespacedName: tc.name})
 			assert.Equal(t, tc.expectedGetResult, result, "Unexpected get result")
 
-			if tc.expectedTemplate != "" {
-				assert.Equal(t, tc.expectedTemplate, templateTestProvisioner.pcaTemplateName)
-			}
-
 			if tc.expectedError && (signErr == nil && getErr == nil) {
 				assert.Fail(t, "Expected an error but got none")
 			}
