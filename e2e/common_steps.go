@@ -6,16 +6,16 @@ import (
 	"strings"
 	"time"
 
+	"crypto/x509"
+	"encoding/pem"
+	"slices"
+
+	util "github.com/cert-manager/cert-manager/pkg/api/util"
 	cmv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	util "github.com/cert-manager/cert-manager/pkg/api/util"
-
-	"crypto/x509"
-	"encoding/pem"
-	"slices"
 
 	"github.com/cert-manager/aws-privateca-issuer/pkg/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -40,7 +40,6 @@ var usageMap = map[string]cmv1.KeyUsage{
 	"ipsec user":        cmv1.UsageIPsecUser,
 	"ipsec tunnel":      cmv1.UsageIPsecTunnel,
 }
-
 
 func getCaArn(caType string) string {
 	caArn, exists := testContext.caArns[caType]
@@ -232,9 +231,9 @@ func parseUsages(usageStr string) []cmv1.KeyUsage {
 	var usages []cmv1.KeyUsage
 	for _, part := range parts {
 		if usage, exists := usageMap[strings.ToLower(part)]; exists {
-			usages = append(usages, usage) 
+			usages = append(usages, usage)
 		} else {
-			usages = append(usages, cmv1.KeyUsage(part)) 
+			usages = append(usages, cmv1.KeyUsage(part))
 		}
 	}
 
@@ -294,7 +293,7 @@ func (issCtx *IssuerContext) verifyCertificateContent(ctx context.Context, usage
 		if !exists {
 			assert.FailNow(godog.T(ctx), "Expected usage %q not found in usageMap.", expectedUsage)
 		}
-		
+
 		x509Usage, _ := util.ExtKeyUsageType(mappedUsage)
 		if !slices.Contains(cert.ExtKeyUsage, x509Usage) {
 			assert.FailNow(godog.T(ctx), fmt.Sprintf("Certificate usage mismatch. Found: %v, Expected: %v", cert.ExtKeyUsage, mappedUsage))
