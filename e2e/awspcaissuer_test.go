@@ -44,7 +44,7 @@ type IssuerContext struct {
 }
 
 var opts = godog.Options{
-	Concurrency: 8,
+	Concurrency: 12,
 	Format:      "pretty",
 	Paths:       []string{"features"},
 	Strict:      true,
@@ -124,17 +124,21 @@ func InitializeTestSuite(suiteCtx *godog.TestSuiteContext) {
 		}
 
 		// Create CAs to be used in testing
-		testContext.caArns["RSA"] = createCertificateAuthority(ctx, cfg, true)
+		testContext.caArns["RSA"] = createRootCertificateAuthority(ctx, cfg, true)
 		log.Printf("Created RSA CA with arn %s", testContext.caArns["RSA"])
+		testContext.caArns["ECDSA"] = createRootCertificateAuthority(ctx, cfg, false)
+		log.Printf("Created ECDSA CA with arn %s", testContext.caArns["ECDSA"])
 
-		testContext.caArns["ECDSA"] = createCertificateAuthority(ctx, cfg, false)
-		log.Printf("Created EC CA with arn %s", testContext.caArns["ECDSA"])
+		testContext.caArns["RSA-SUB"] = createSubCertificateAuthority(ctx, cfg, true, testContext.caArns["RSA"])
+		log.Printf("Created RSA subordinate CA with arn %s and pathlength 1", testContext.caArns["RSA-SUB"])
+		testContext.caArns["ECDSA-SUB"] = createSubCertificateAuthority(ctx, cfg, false, testContext.caArns["ECDSA"])
+		log.Printf("Created ECDSA subordinate CA with arn %s and pathlength 1", testContext.caArns["ECDSA-SUB"])
 
 		xaRole, xaRoleExists := os.LookupEnv(CrossAccountRoleKey)
 		if xaRoleExists {
 			testContext.xaCfg = assumeRole(ctx, cfg, xaRole, testContext.region)
 
-			testContext.caArns["XA"] = createCertificateAuthority(ctx, testContext.xaCfg, true)
+			testContext.caArns["XA"] = createRootCertificateAuthority(ctx, testContext.xaCfg, true)
 
 			log.Printf("Created XA CA with arn %s", testContext.caArns["XA"])
 
@@ -180,6 +184,13 @@ func InitializeTestSuite(suiteCtx *godog.TestSuiteContext) {
 		deleteCertificateAuthority(ctx, cfg, testContext.caArns["ECDSA"])
 		log.Printf("Deleted the EC CA")
 
+		deleteCertificateAuthority(ctx, cfg, testContext.caArns["RSA-SUB"])
+		log.Printf("Deleted the RSA sub CA")
+
+		deleteCertificateAuthority(ctx, cfg, testContext.caArns["ECDSA-SUB"])
+		log.Printf("Deleted the ECDSA sub CA")
+
+		//Delete IAM User and policy
 		deleteAccessKey(ctx, cfg, testContext.userName, testContext.accessKey)
 		log.Printf("Deleted the Access Key")
 
@@ -214,15 +225,22 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// This defines the mapping of steps --> functions
 	ctx.Step(`^I create a namespace`, issuerContext.createNamespace)
 	ctx.Step(`^I create a Secret with keys ([A-Za-z_]+) and ([A-Za-z_]+) for my AWS credentials$`, issuerContext.createSecret)
-	ctx.Step(`^I create an AWSPCAClusterIssuer using a (RSA|ECDSA|XA) CA$`, issuerContext.createClusterIssuer)
+
+	ctx.Step(`^I create an AWSPCAClusterIssuer using a (RSA|ECDSA|RSA-SUB|ECDSA-SUB|XA) CA$`, issuerContext.createClusterIssuer)
+	ctx.Step(`^I create an AWSPCAClusterIssuer with template (.+) using a (RSA|ECDSA|RSA-SUB|ECDSA-SUB|XA) CA$`, issuerContext.createClusterIssuerWithTemplate)
 	ctx.Step(`^I delete the AWSPCAClusterIssuer$`, issuerContext.deleteClusterIssuer)
-	ctx.Step(`^I create an AWSPCAIssuer using a (RSA|ECDSA|XA) CA$`, issuerContext.createNamespaceIssuer)
+
+	ctx.Step(`^I create an AWSPCAIssuer using a (RSA|ECDSA|RSA-SUB|ECDSA-SUB|XA) CA$`, issuerContext.createNamespaceIssuer)
+	ctx.Step(`^I create an AWSPCAIssuer with template (.+) using a (RSA|ECDSA|RSA-SUB|ECDSA-SUB|XA) CA$`, issuerContext.createNamespaceIssuerWithTemplate)
+
 	ctx.Step(`^I issue a (SHORT_VALIDITY|RSA|ECDSA|CA) certificate$`, issuerContext.issueCertificateWithKeyType)
 	ctx.Step(`^I issue a (SHORT_VALIDITY|RSA|ECDSA|CA) certificate with usage (.+)$`, issuerContext.issueCertificateWithUsage)
+
+	ctx.Step(`^the CA certificate should have path length (\d)$`, issuerContext.verifyCertificateAuthorityPathLen)
 	ctx.Step(`^the certificate should be issued successfully$`, issuerContext.verifyCertificateIssued)
-	ctx.Step(`^the certificate request has been created$`, issuerContext.verifyCertificateRequestIsCreated)
+	ctx.Step(`^the certificate should be issued with usage (.+)$`, issuerContext.verifyCertificateUsage)
+
 	ctx.Step(`^the certificate request has reason (Pending|Failed|Issued|Denied) and status (True|False|Unknown)$`, issuerContext.verifyCertificateRequestState)
-	ctx.Step(`^the certificate should be issued with usage (.+)$`, issuerContext.verifyCertificateContent)
 
 	// This cleans up all of the resources after a test
 	ctx.After(func(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
@@ -248,7 +266,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		testContext.cmClient.Certificates(issuerContext.namespace).Delete(ctx, issuerContext.certName, metav1.DeleteOptions{})
 
 		// Delete left over certificate secrets
-		testContext.clientset.CoreV1().Secrets(issuerContext.namespace).Delete(ctx, issuerContext.certName+"-cert-secret", metav1.DeleteOptions{})
+		testContext.clientset.CoreV1().Secrets(issuerContext.namespace).Delete(ctx, issuerContext.certName+secretSuffix, metav1.DeleteOptions{})
 
 		// Delete created namespace
 		if issuerContext.namespace != "default" {

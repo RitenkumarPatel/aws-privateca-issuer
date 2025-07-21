@@ -13,6 +13,13 @@ import (
 )
 
 func (issCtx *IssuerContext) createClusterIssuer(ctx context.Context, caType string) error {
+	return issCtx.createClusterIssuerInternal(ctx, caType, "")
+}
+
+func (issCtx *IssuerContext) createClusterIssuerWithTemplate(ctx context.Context, templateName string, caType string) error {
+	return issCtx.createClusterIssuerInternal(ctx, caType, templateName)
+}
+func (issCtx *IssuerContext) createClusterIssuerInternal(ctx context.Context, caType string, templateName string) error {
 	if issCtx.issuerName == "" {
 		issCtx.issuerName = uuid.New().String() + "--cluster-issuer--" + strings.ToLower(caType)
 	}
@@ -20,6 +27,10 @@ func (issCtx *IssuerContext) createClusterIssuer(ctx context.Context, caType str
 	issSpec := v1beta1.AWSPCAClusterIssuer{
 		ObjectMeta: metav1.ObjectMeta{Name: issCtx.issuerName},
 		Spec:       getIssuerSpec(caType),
+	}
+
+	if templateName != "" {
+		issSpec.Spec.PCATemplateName = templateName
 	}
 
 	if issCtx.secretRef != (v1beta1.AWSCredentialsSecretReference{}) {
