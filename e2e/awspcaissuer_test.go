@@ -245,7 +245,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		testContext.cmClient.Certificates(issuerContext.namespace).Delete(ctx, issuerContext.certName, metav1.DeleteOptions{})
 
 		// Delete left over certificate secrets
-		testContext.clientset.CoreV1().Secrets(issuerContext.namespace).Delete(ctx, issuerContext.certName+"-cert-secret", metav1.DeleteOptions{})
+		testContext.clientset.CoreV1().Secrets(issuerContext.namespace).Delete(ctx, issuerContext.certName+secretSuffix, metav1.DeleteOptions{})
 
 		// Delete created namespace
 		if issuerContext.namespace != "default" {

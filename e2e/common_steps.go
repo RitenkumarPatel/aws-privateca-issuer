@@ -184,7 +184,7 @@ func (issCtx *IssuerContext) issueCertificate(ctx context.Context, certConfig Ce
 	issCtx.certName = issCtx.issuerName + "-" + sanitizedCertType + "-cert"
 	certSpec := getCertSpec(certConfig)
 
-	secretName := issCtx.certName + "-cert-secret"
+	secretName := issCtx.certName + secretSuffix
 	certSpec.SecretName = secretName
 	certSpec.IssuerRef = cmmeta.ObjectReference{
 		Kind:  issCtx.issuerType,

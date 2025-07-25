@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const secretSuffix = "-cert-secret"
+
 var usageMap = map[string]cmv1.KeyUsage{
 	"client_auth":       cmv1.UsageClientAuth,
 	"server_auth":       cmv1.UsageServerAuth,
@@ -64,7 +66,7 @@ func (issCtx *IssuerContext) verifyCertificateRequestState(ctx context.Context, 
 }
 
 func (issCtx *IssuerContext) parseCertificateSecret(ctx context.Context) *x509.Certificate {
-	secretName := issCtx.certName + "-cert-secret"
+	secretName := issCtx.certName + secretSuffix
 
 	certData, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
 	if err != nil {
@@ -87,6 +89,7 @@ func (issCtx *IssuerContext) parseCertificateSecret(ctx context.Context) *x509.C
 func (issCtx *IssuerContext) verifyCertificateUsage(ctx context.Context, usage string) error {
 	cert := issCtx.parseCertificateSecret(ctx)
 
+	var expectedX509Usages []x509.ExtKeyUsage
 	for _, expectedUsage := range strings.Split(usage, ",") {
 		mappedUsage, exists := usageMap[expectedUsage]
 		if !exists {
@@ -94,13 +97,19 @@ func (issCtx *IssuerContext) verifyCertificateUsage(ctx context.Context, usage s
 		}
 
 		x509Usage, _ := util.ExtKeyUsageType(mappedUsage)
+		expectedX509Usages = append(expectedX509Usages, x509Usage)
 		if !slices.Contains(cert.ExtKeyUsage, x509Usage) {
 			assert.FailNow(godog.T(ctx), fmt.Sprintf("Certificate usage mismatch. Found: %v, Expected: %v", cert.ExtKeyUsage, mappedUsage))
 		}
 	}
 
+	if len(cert.ExtKeyUsage) != len(expectedX509Usages) {
+		assert.FailNow(godog.T(ctx), fmt.Sprintf("Certificate has extra key usage types. Found: %v, Expected: %v", cert.ExtKeyUsage, expectedX509Usages))
+	}
+
 	return nil
 }
+
 
 func (issCtx *IssuerContext) verifyCertificateAuthorityPathLen(ctx context.Context, pathLen int) error {
 	cert := issCtx.parseCertificateSecret(ctx)
