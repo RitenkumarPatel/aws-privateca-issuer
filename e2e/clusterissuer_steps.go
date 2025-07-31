@@ -16,10 +16,10 @@ func (issCtx *IssuerContext) createClusterIssuer(ctx context.Context, caType str
 	return issCtx.createClusterIssuerInternal(ctx, caType, "")
 }
 
-func (issCtx *IssuerContext) createClusterIssuerWithTemplate(ctx context.Context, templateArn string, caType string) error {
-	return issCtx.createClusterIssuerInternal(ctx, caType, templateArn)
+func (issCtx *IssuerContext) createClusterIssuerWithTemplate(ctx context.Context, templateName string, caType string) error {
+	return issCtx.createClusterIssuerInternal(ctx, caType, templateName)
 }
-func (issCtx *IssuerContext) createClusterIssuerInternal(ctx context.Context, caType string, templateArn string) error {
+func (issCtx *IssuerContext) createClusterIssuerInternal(ctx context.Context, caType string, templateName string) error {
 	if issCtx.issuerName == "" {
 		issCtx.issuerName = uuid.New().String() + "--cluster-issuer--" + strings.ToLower(caType)
 	}
@@ -29,8 +29,8 @@ func (issCtx *IssuerContext) createClusterIssuerInternal(ctx context.Context, ca
 		Spec:       getIssuerSpec(caType),
 	}
 
-	if templateArn != "" {
-		issSpec.Spec.PCATemplateName = templateArn
+	if templateName != "" {
+		issSpec.Spec.PCATemplateName = templateName
 	}
 
 	if issCtx.secretRef != (v1beta1.AWSCredentialsSecretReference{}) {

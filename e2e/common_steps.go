@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +17,17 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const secretSuffix = "-cert-secret"
+
+var usageMap = map[string]cmv1.KeyUsage{
+	"client_auth":       cmv1.UsageClientAuth,
+	"server_auth":       cmv1.UsageServerAuth,
+	"digital_signature": cmv1.UsageDigitalSignature,
+	"code_signing":      cmv1.UsageCodeSigning,
+	"ocsp_signing":      cmv1.UsageOCSPSigning,
+	"any":               cmv1.UsageAny,
+}
 
 type CertificateConfig struct {
 	CertType string
@@ -204,4 +217,49 @@ func (issCtx *IssuerContext) issueCertificate(ctx context.Context, certConfig Ce
 	}
 
 	return nil
+}
+
+func parseUsages(usageStr string) []cmv1.KeyUsage {
+	parts := strings.Split(usageStr, ",")
+	var usages []cmv1.KeyUsage
+	for _, part := range parts {
+		if usage, exists := usageMap[strings.ToLower(part)]; exists {
+			usages = append(usages, usage)
+		} else {
+			assert.FailNow(godog.T(context.Background()), "Unknown usage: "+part)
+		}
+	}
+
+	return usages
+}
+
+func (issCtx *IssuerContext) verifyCertificateState(ctx context.Context, reason string, status string) error {
+	err := waitForCertificateState(ctx, testContext.cmClient, issCtx.certName, issCtx.namespace, reason, status)
+
+	if err != nil {
+		assert.FailNow(godog.T(ctx), "Certificate did not reach specified state, Reason = "+reason+", Status = "+status+": "+err.Error())
+	}
+
+	return nil
+}
+
+func (issCtx *IssuerContext) parseCertificateSecret(ctx context.Context) *x509.Certificate {
+	secretName := issCtx.certName + secretSuffix
+
+	certData, err := getCertificateData(ctx, testContext.clientset, issCtx.namespace, secretName)
+	if err != nil {
+		assert.FailNow(godog.T(ctx), "Failed to get certificate data: "+err.Error())
+	}
+
+	decodedData, _ := pem.Decode(certData)
+	if decodedData == nil {
+		assert.FailNow(godog.T(ctx), "Failed to decode certificate data")
+	}
+
+	cert, err := x509.ParseCertificate(decodedData.Bytes)
+	if err != nil {
+		assert.FailNow(godog.T(ctx), "Failed to parse certificate: "+err.Error())
+	}
+
+	return cert
 }
