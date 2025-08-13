@@ -16,9 +16,8 @@ import (
 )
 
 func waitForIssuerReady(ctx context.Context, client *clientV1beta1.Client, name string, namespace string) error {
-	return wait.PollImmediate(250*time.Millisecond, 2*time.Minute,
-		func() (bool, error) {
-
+	return wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 2*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
 			issuer, err := client.AWSPCAIssuers(namespace).Get(ctx, name, metav1.GetOptions{})
 
 			if err != nil {
@@ -34,9 +33,8 @@ func waitForIssuerReady(ctx context.Context, client *clientV1beta1.Client, name 
 }
 
 func waitForClusterIssuerReady(ctx context.Context, client *clientV1beta1.Client, name string) error {
-	return wait.PollImmediate(250*time.Millisecond, 2*time.Minute,
-		func() (bool, error) {
-
+	return wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 2*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
 			issuer, err := client.AWSPCAClusterIssuers().Get(ctx, name, metav1.GetOptions{})
 
 			if err != nil {
@@ -54,9 +52,8 @@ func waitForClusterIssuerReady(ctx context.Context, client *clientV1beta1.Client
 }
 
 func waitForCertificateRequestState(ctx context.Context, client *cmclientv1.CertmanagerV1Client, name string, namespace string, reason string, status string) error {
-	return wait.PollImmediate(250*time.Millisecond, 2*time.Minute,
-		func() (bool, error) {
-
+	return wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 2*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
 			cr, err := client.CertificateRequests(namespace).Get(ctx, name, metav1.GetOptions{})
 			if err != nil {
 				return false, fmt.Errorf("error getting CertificateRequest %q: %v", name, err)
@@ -72,9 +69,8 @@ func waitForCertificateRequestState(ctx context.Context, client *cmclientv1.Cert
 }
 
 func waitForCertificateRequestToBeCreated(ctx context.Context, client *cmclientv1.CertmanagerV1Client, name string, namespace string) error {
-	return wait.PollImmediate(250*time.Millisecond, 2*time.Minute,
-		func() (bool, error) {
-
+	return wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 2*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
 			_, err := client.CertificateRequests(namespace).Get(ctx, name, metav1.GetOptions{})
 
 			if err != nil {
@@ -86,9 +82,8 @@ func waitForCertificateRequestToBeCreated(ctx context.Context, client *cmclientv
 }
 
 func waitForCertificateState(ctx context.Context, client *cmclientv1.CertmanagerV1Client, name string, namespace string, reason string, status string) error {
-	return wait.PollImmediate(250*time.Millisecond, 2*time.Minute,
-		func() (bool, error) {
-
+	return wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 2*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
 			certificate, err := client.Certificates(namespace).Get(ctx, name, metav1.GetOptions{})
 
 			if err != nil {
